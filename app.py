@@ -9,10 +9,11 @@ import yfinance as yf
 import pandas as pd
 from datetime import datetime, timedelta
 from typing import List, Dict
+import json
 
 load_dotenv()
 
-app = FastAPI(title="RC Scanner API v1.2 - Phase 8 FLOAT")
+app = FastAPI(title="RC Scanner API v1.3 - Phase 9 NEWS")
 
 app.add_middleware(
     CORSMiddleware,
@@ -24,33 +25,57 @@ app.add_middleware(
 
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
 
-# FLOAT CACHE (daily refresh)
+# FLOAT CACHE
 FLOAT_CACHE = {}
-def get_float_cache(symbol: str) -> Dict:
-    """Phase 8: Yahoo float + cache 24h"""
+def get_float(symbol: str) -> Dict:
     global FLOAT_CACHE
-
-    if symbol in FLOAT_CACHE:
-        cache_age = datetime.now() - FLOAT_CACHE[symbol]['time']
-        if cache_age < timedelta(hours=24):
-            return FLOAT_CACHE[symbol]
+    if symbol in FLOAT_CACHE and (datetime.now() - FLOAT_CACHE[symbol]['time']) < timedelta(hours=24):
+        return FLOAT_CACHE[symbol]
 
     try:
         stock = yf.Ticker(symbol)
         info = stock.info
-        float_shares = info.get('floatShares', 0) or info.get('sharesOutstanding', 0)
-
-        FLOAT_CACHE[symbol] = {
-            'float_shares': int(float_shares) if float_shares else 0,
-            'time': datetime.now()
-        }
-        print(f"✅ {symbol} float: {float_shares:,}")
+        shares = int(info.get('floatShares') or info.get('sharesOutstanding') or 25000000)
+        FLOAT_CACHE[symbol] = {'float': shares, 'time': datetime.now()}
         return FLOAT_CACHE[symbol]
     except:
-        return {'float_shares': 25000000}  # Default
+        return {'float': 25000000}
 
-def get_fin_viz_gainers() -> List[str]:
-    """Phase 7: LIVE Finviz gappers ($2-20, +10%)"""
+# **PHASE 9: Marketaux News (FREE)**
+def get_news(symbol: str, api_key: str = None) -> List[Dict]:
+    """Free news API - 100 calls/day"""
+    if not api_key:
+        api_key = os.getenv("MARKETAUX_KEY", "demo")
+
+    try:
+        url = "https://api.marketaux.com/v1/news/all"
+        params = {
+            'symbols': symbol,
+            'filter_entities': 'true',
+            'language': 'en',
+            'api_token': api_key,
+            'limit': 5
+        }
+        response = requests.get(url, params=params, timeout=8)
+
+        if response.status_code == 200:
+            data = response.json()
+            news = []
+            for article in data.get('data', [])[:3]:
+                news.append({
+                    'title': article['title'],
+                    'source': article['source'],
+                    'published': article['published_at'][:10]
+                })
+            return news
+
+        # Demo data if no key
+        return [{'title': f'{symbol} catalyst news', 'source': 'Demo', 'published': 'today'}]
+    except:
+        return [{'title': f'{symbol} news check failed', 'source': 'API', 'published': 'today'}]
+
+def get_fin_viz_gappers() -> List[str]:
+    """Phase 7: LIVE Finviz $2-20 +10%"""
     try:
         url = "https://finviz.com/screener.ashx?v=111&f=sh_price_u20,ta_perf_d10o"
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
@@ -58,64 +83,64 @@ def get_fin_viz_gainers() -> List[str]:
         soup = BeautifulSoup(response.text, 'html.parser')
 
         tickers = []
-        rows = soup.select('table.screener_table tr')
-        for row in rows[1:26]:
+        for row in soup.select('table.screener_table tr')[1:26]:
             cells = row.find_all('td')
             if len(cells) > 1:
                 symbol = cells[1].text.strip()
                 if symbol.isalpha() and len(symbol) <= 5:
                     tickers.append(symbol)
-
-        print(f"✅ Finviz: {len(tickers)} LIVE gappers")
-        return tickers[:20]
+        return tickers[:15]
     except:
-        return ["SMCI", "MU", "VRT", "DELL", "PLTR"]
+        return ["SMCI", "MU", "VRT"]
 
 @app.get("/api/scanner")
 async def scanner():
-    """Phase 7+8: LIVE Finviz + Real Float"""
-    tickers = get_fin_viz_gainers()
+    """Phase 7+8+9: Finviz + Float + NEWS"""
+    tickers = get_fin_viz_gappers()
     results = []
 
     for symbol in tickers:
         try:
             stock = yf.Ticker(symbol)
             hist = stock.history(period="2d")
-
             if len(hist) < 2: continue
 
-            current_price = float(hist['Close'].iloc[-1])
-            prev_close = float(hist['Close'].iloc[-2])
-            day_gain_pct = ((current_price - prev_close) / prev_close) * 100
-            rel_volume = float(hist['Volume'].iloc[-1] / hist['Volume'].iloc[-2]) if len(hist) > 1 else 1.0
+            price = float(hist['Close'].iloc[-1])
+            prev = float(hist['Close'].iloc[-2])
+            gain = ((price - prev) / prev) * 100
+            rel_vol = hist['Volume'].iloc[-1] / hist['Volume'].iloc[-2]
 
-            # **PHASE 8: REAL FLOAT**
-            float_data = get_float_cache(symbol)
-            passes_float = float_data['float_shares'] < 20000000
+            float_data = get_float(symbol)
+            passes_float = float_data['float'] < 20000000
 
-            # ROSS CAMERON 5 RULES
-            passes_price = 2 <= current_price <= 20
-            passes_gain = day_gain_pct >= 10
-            passes_volume = rel_volume >= 5
+            # **PHASE 9 NEWS**
+            news = get_news(symbol)
 
-            if passes_price and passes_gain:
-                result = {
-                    "symbol": symbol,
-                    "price": round(current_price, 2),
-                    "day_gain": round(day_gain_pct, 2),
-                    "rel_volume": round(rel_volume, 2),
-                    "float_shares": float_data['float_shares'],
-                    "news_flag": True,
-                    "passes_price": passes_price,
-                    "passes_gain": passes_gain,
-                    "passes_volume": passes_volume,
-                    "passes_float": passes_float,
-                    "score": round(day_gain_pct * 0.3 + rel_volume * 0.3 + (20-float_data['float_shares']/1000000)*0.4, 2),
-                    "scanned_at": str(datetime.now())
-                }
+            passes_price = 2 <= price <= 20
+            passes_gain = gain >= 10
+            passes_volume = rel_vol >= 5
+            passes_news = len(news) >= 2
 
-                supabase.table("scanner_results").upsert(result).execute()
-                results.append(result)
+            result = {
+                "symbol": symbol,
+                "price": round(price, 2),
+                "day_gain": round(gain, 2),
+                "rel_volume": round(rel_vol, 2),
+                "float": float_data['float'],
+                "news_count": len(news),
+                "news_flag": passes_news,
+                "headlines": [n['title'][:60] + '...' for n in news],
+                "passes_price": passes_price,
+                "passes_gain": passes_gain,
+                "passes_volume": passes_volume,
+                "passes_float": passes_float,
+                "passes_news": passes_news,
+                "score": round(gain*0.25 + rel_vol*0.25 + (20-float_data['float']/1e6)*0.25 + len(news)*0.25, 2),
+                "scanned_at": str(datetime.now())
+            }
+
+            supabase.table("scanner_results").upsert(result).execute()
+            results.append(result)
 
         except Exception as e:
             print(f"❌ {symbol}: {e}")
@@ -123,17 +148,19 @@ async def scanner():
     return {
         "scanner": results, 
         "count": len(results),
-        "source": "Finviz + Yahoo Float (Phase 7+8)",
+        "source": "Finviz + Float + News (Phase 9)",
         "timestamp": str(datetime.now())
     }
 
 @app.get("/api/news")
-async def news(symbol: str = "AAPL"):
-    return {"status": "Phase 9 - Add NEWS_API_KEY"}
+async def news(symbol: str):
+    """Direct news lookup"""
+    news_data = get_news(symbol)
+    return {"symbol": symbol, "news": news_data}
 
 @app.get("/health")
 async def health():
-    return {"status": "OK", "version": "v1.2-Phase8", "float_live": True}
+    return {"status": "OK", "version": "v1.3-Phase9", "news_live": True}
 
 if __name__ == "__main__":
     import uvicorn
