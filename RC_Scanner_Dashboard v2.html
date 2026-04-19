@@ -8,64 +8,88 @@
 <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400;500;600;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <script src="https://s3.tradingview.com/tv.js"></script>
 <style>
+/* ═══════════════════════════════════════════
+   DESIGN: Terminal-grade trading OS
+   Dark gunmetal + acid green accent
+   Dense data, zero decoration
+   ═══════════════════════════════════════════ */
 :root {
-  --bg0: #04080d;
-  --bg1: #080e16;
-  --bg2: #0c1420;
-  --bg3: #111c2c;
-  --border: #1a2740;
-  --border2: #243550;
-  --text0: #e8f0fe;
-  --text1: #8fa3bf;
-  --text2: #4a6080;
-  --accent: #00ff88;
-  --accent2: #00cc6a;
+  --bg0:      #04080d;
+  --bg1:      #080e16;
+  --bg2:      #0c1420;
+  --bg3:      #111c2c;
+  --border:   #1a2740;
+  --border2:  #243550;
+  --text0:    #e8f0fe;
+  --text1:    #8fa3bf;
+  --text2:    #4a6080;
+  --accent:   #00ff88;
+  --accent2:  #00cc6a;
   --accent-d: #003322;
-  --yellow: #f0b429;
+  --yellow:   #f0b429;
   --yellow-d: #2a1f00;
-  --red: #ff4444;
-  --red-d: #2a0000;
-  --blue: #4da6ff;
-  --blue-d: #001a33;
-  --purple: #b06aff;
-  --teal: #00d4aa;
-  --orange: #ff8c42;
+  --red:      #ff4444;
+  --red-d:    #2a0000;
+  --blue:     #4da6ff;
+  --blue-d:   #001a33;
+  --purple:   #b06aff;
+  --teal:     #00d4aa;
+  --orange:   #ff8c42;
   --font-mono: 'Geist Mono', monospace;
   --font-display: 'Syne', sans-serif;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
 html, body {
   width: 100%; height: 100%;
   background: var(--bg0);
   color: var(--text0);
   font-family: var(--font-mono);
   font-size: 12px;
-  overflow: hidden;
+  overflow-x: hidden;
   line-height: 1.4;
 }
+
+/* scan-line effect on body */
 body::before {
   content: '';
   position: fixed; inset: 0;
   background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,136,0.012) 2px, rgba(0,255,136,0.012) 4px);
   pointer-events: none; z-index: 9999;
 }
+
+/* ── TOP BAR ── */
 .topbar {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 0 14px; height: 42px;
-  background: var(--bg1); border-bottom: 1px solid var(--border);
+  padding: 0 14px;
+  height: 42px;
+  background: var(--bg1);
+  border-bottom: 1px solid var(--border);
   position: sticky; top: 0; z-index: 100;
 }
 .topbar-left { display: flex; align-items: center; gap: 18px; }
-.logo { font-family: var(--font-display); font-size: 14px; font-weight: 800; color: var(--accent); letter-spacing: -0.5px; }
+.logo {
+  font-family: var(--font-display);
+  font-size: 14px; font-weight: 800;
+  color: var(--accent);
+  letter-spacing: -0.5px;
+}
 .logo span { color: var(--text1); font-weight: 400; font-size: 11px; margin-left: 6px; font-family: var(--font-mono); }
-.market-status { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--text1); }
+
+.market-status {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 10px; color: var(--text1);
+}
 .status-dot {
-  width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
-  box-shadow: 0 0 6px var(--accent); animation: pulse 2s infinite;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+  animation: pulse 2s infinite;
 }
 .status-dot.closed { background: var(--red); box-shadow: 0 0 6px var(--red); animation: none; }
 @keyframes pulse { 0%,100%{ opacity:1; } 50%{ opacity:0.4; } }
+
 .topbar-right { display: flex; align-items: center; gap: 16px; font-size: 10px; color: var(--text1); }
 .clock { font-size: 13px; color: var(--accent); letter-spacing: 1px; }
 .session-badge {
@@ -73,22 +97,22 @@ body::before {
   font-size: 9px; letter-spacing: 1px; text-transform: uppercase;
   border: 1px solid var(--border2);
 }
+
+/* ── LAYOUT ── */
 .layout {
   display: grid;
-  grid-template-columns: minmax(240px, 280px) minmax(0, 1fr) minmax(300px, 360px);
-  grid-template-rows: 1fr;
-  width: 100%;
+  grid-template-columns: 220px 1fr 260px;
+  grid-template-rows: auto 1fr;
   height: calc(100vh - 42px);
   gap: 0;
-  overflow: hidden;
 }
+
+/* ── LEFT SIDEBAR ── */
 .sidebar {
   background: var(--bg1);
   border-right: 1px solid var(--border);
   display: flex; flex-direction: column;
   overflow: hidden;
-  min-width: 240px;
-  max-width: 280px;
 }
 .sidebar-section { border-bottom: 1px solid var(--border); }
 .sidebar-title {
@@ -106,10 +130,13 @@ body::before {
   cursor: pointer; letter-spacing: 1px;
 }
 .sidebar-title button:hover { background: var(--accent-d); }
-.watchlist { overflow-y: auto; flex: 1; min-height: 180px; }
+
+/* Watchlist */
+.watchlist { overflow-y: auto; flex: 1; }
 .watchlist::-webkit-scrollbar { width: 3px; }
 .watchlist::-webkit-scrollbar-track { background: var(--bg0); }
 .watchlist::-webkit-scrollbar-thumb { background: var(--border2); }
+
 .ticker-item {
   display: flex; align-items: center; justify-content: space-between;
   padding: 7px 12px;
@@ -121,23 +148,31 @@ body::before {
 .ticker-item:hover { background: var(--bg2); }
 .ticker-item.active { background: var(--bg3); border-left: 2px solid var(--accent); }
 .ticker-item.active .ti-symbol { color: var(--accent); }
+
 .ti-left { display: flex; flex-direction: column; gap: 2px; }
 .ti-symbol { font-size: 12px; font-weight: 600; color: var(--text0); }
 .ti-name { font-size: 9px; color: var(--text2); }
 .ti-right { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.ti-price { font-size: 11px; color: var(--text0); }
 .ti-change { font-size: 9px; font-weight: 600; }
 .ti-change.up { color: var(--accent); }
 .ti-change.down { color: var(--red); }
 .ti-change.flat { color: var(--text2); }
+
 .ti-signals { display: flex; gap: 3px; margin-top: 3px; flex-wrap: wrap; }
-.mini-badge { font-size: 7px; padding: 1px 4px; border-radius: 2px; font-weight: 600; letter-spacing: 0.5px; }
-.mb-apex { background: var(--accent-d); color: var(--accent); border: 1px solid var(--accent2); }
-.mb-hod { background: #002200; color: #44ff88; border: 1px solid #006622; }
-.mb-flag { background: var(--yellow-d); color: var(--yellow); border: 1px solid #664400; }
-.mb-sqz { background: #221100; color: var(--orange); border: 1px solid #664400; }
-.mb-rev { background: var(--blue-d); color: var(--blue); border: 1px solid #004488; }
-.mb-gap { background: #001122; color: var(--teal); border: 1px solid #004444; }
-.mb-none { background: var(--bg0); color: var(--text2); border: 1px solid var(--border); }
+.mini-badge {
+  font-size: 7px; padding: 1px 4px; border-radius: 2px;
+  font-weight: 600; letter-spacing: 0.5px;
+}
+.mb-apex  { background: var(--accent-d); color: var(--accent); border: 1px solid var(--accent2); }
+.mb-hod   { background: #002200; color: #44ff88; border: 1px solid #006622; }
+.mb-flag  { background: var(--yellow-d); color: var(--yellow); border: 1px solid #664400; }
+.mb-sqz   { background: #221100; color: var(--orange); border: 1px solid #664400; }
+.mb-rev   { background: var(--blue-d); color: var(--blue); border: 1px solid #004488; }
+.mb-gap   { background: #001122; color: var(--teal); border: 1px solid #004444; }
+.mb-none  { background: var(--bg0); color: var(--text2); border: 1px solid var(--border); }
+
+/* Scanner selector */
 .scanner-select { padding: 8px 12px; display: flex; flex-direction: column; gap: 4px; }
 .sc-btn {
   display: flex; align-items: center; gap: 8px;
@@ -155,7 +190,11 @@ body::before {
 .sc-btn .sc-name { font-size: 10px; font-weight: 600; }
 .sc-btn .sc-time { font-size: 8px; color: var(--text2); }
 .sc-btn.active .sc-time { color: var(--accent2); }
-.main { display: flex; flex-direction: column; overflow: hidden; background: var(--bg0); min-width: 0; }
+
+/* ── MAIN AREA ── */
+.main { display: flex; flex-direction: column; overflow: hidden; background: var(--bg0); }
+
+/* Chart controls bar */
 .chart-bar {
   display: flex; align-items: center; justify-content: space-between;
   padding: 6px 14px;
@@ -163,11 +202,12 @@ body::before {
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
-.chart-bar-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.chart-bar-left { display: flex; align-items: center; gap: 10px; }
 .active-ticker { font-family: var(--font-display); font-size: 16px; font-weight: 700; color: var(--accent); }
 .active-price { font-size: 14px; color: var(--text0); }
 .active-change { font-size: 12px; color: var(--accent); font-weight: 600; }
-.tf-btns { display: flex; gap: 3px; flex-wrap: wrap; }
+
+.tf-btns { display: flex; gap: 3px; }
 .tf-btn {
   padding: 3px 8px; border-radius: 3px; font-size: 9px;
   border: 1px solid var(--border); background: none;
@@ -177,15 +217,16 @@ body::before {
 }
 .tf-btn:hover { background: var(--bg3); color: var(--text0); }
 .tf-btn.active { background: var(--accent-d); border-color: var(--accent2); color: var(--accent); }
+
+/* Main chart area */
 .chart-container {
-  flex: 1 1 auto;
+  flex: 1;
   position: relative;
   min-height: 0;
-  min-width: 0;
-  width: 100%;
-  height: 100%;
 }
-#tradingview-chart { width: 100% !important; height: 100% !important; min-width: 0; }
+#tradingview-chart { width: 100%; height: 100%; }
+
+/* Scanner checklist strip */
 .checklist-strip {
   display: flex; align-items: center; gap: 0;
   background: var(--bg1);
@@ -195,6 +236,7 @@ body::before {
 }
 .checklist-strip::-webkit-scrollbar { height: 2px; }
 .checklist-strip::-webkit-scrollbar-thumb { background: var(--border2); }
+
 .check-item {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 6px 14px; gap: 2px;
@@ -204,7 +246,10 @@ body::before {
 }
 .check-item:hover { background: var(--bg2); }
 .check-label { font-size: 8px; color: var(--text2); letter-spacing: 0.5px; text-transform: uppercase; }
-.check-value { font-size: 10px; font-weight: 600; display: flex; align-items: center; gap: 4px; }
+.check-value {
+  font-size: 10px; font-weight: 600;
+  display: flex; align-items: center; gap: 4px;
+}
 .check-value.pass { color: var(--accent); }
 .check-value.fail { color: var(--red); }
 .check-value.warn { color: var(--yellow); }
@@ -212,6 +257,7 @@ body::before {
 .check-dot.pass { background: var(--accent); box-shadow: 0 0 4px var(--accent); }
 .check-dot.fail { background: var(--red); }
 .check-dot.warn { background: var(--yellow); }
+
 .signal-strip-item {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 6px 16px; gap: 3px;
@@ -221,20 +267,25 @@ body::before {
 }
 .signal-label { font-size: 8px; color: var(--text2); letter-spacing: 1px; text-transform: uppercase; }
 .signal-value { font-size: 11px; font-weight: 700; }
-.sv-apex { color: var(--accent); }
-.sv-hod { color: #44ff88; }
-.sv-watch { color: var(--yellow); }
-.sv-none { color: var(--text2); }
-.sv-exit { color: var(--red); }
+.sv-apex   { color: var(--accent); }
+.sv-hod    { color: #44ff88; }
+.sv-watch  { color: var(--yellow); }
+.sv-none   { color: var(--text2); }
+.sv-exit   { color: var(--red); }
+
+/* ── RIGHT PANEL ── */
 .right-panel {
   background: var(--bg1);
   border-left: 1px solid var(--border);
   display: flex; flex-direction: column;
   overflow: hidden;
-  min-width: 300px;
-  max-width: 360px;
 }
-.panel-tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--bg0); }
+
+.panel-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg0);
+}
 .panel-tab {
   flex: 1; padding: 8px 6px; text-align: center;
   font-size: 8px; letter-spacing: 1px; text-transform: uppercase;
@@ -244,9 +295,12 @@ body::before {
 }
 .panel-tab:hover { color: var(--text1); }
 .panel-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
 .panel-content { flex: 1; overflow-y: auto; }
 .panel-content::-webkit-scrollbar { width: 3px; }
 .panel-content::-webkit-scrollbar-thumb { background: var(--border2); }
+
+/* Alert feed */
 .alert-item {
   padding: 8px 12px;
   border-bottom: 1px solid var(--border);
@@ -256,31 +310,47 @@ body::before {
   transition: background 0.1s;
 }
 .alert-item:hover { background: var(--bg2); }
-.alert-item.apex { border-left: 3px solid var(--accent); }
-.alert-item.hod { border-left: 3px solid #44ff88; }
-.alert-item.flag { border-left: 3px solid var(--yellow); }
-.alert-item.sqz { border-left: 3px solid var(--orange); }
-.alert-item.rev { border-left: 3px solid var(--blue); }
-.alert-item.gap { border-left: 3px solid var(--teal); }
-.alert-item.exit { border-left: 3px solid var(--red); }
-.alert-item.cont { border-left: 3px solid var(--purple); }
+.alert-item.apex  { border-left: 3px solid var(--accent); }
+.alert-item.hod   { border-left: 3px solid #44ff88; }
+.alert-item.flag  { border-left: 3px solid var(--yellow); }
+.alert-item.sqz   { border-left: 3px solid var(--orange); }
+.alert-item.rev   { border-left: 3px solid var(--blue); }
+.alert-item.gap   { border-left: 3px solid var(--teal); }
+.alert-item.exit  { border-left: 3px solid var(--red); }
+.alert-item.cont  { border-left: 3px solid var(--purple); }
+
 @keyframes slideIn { from{ opacity:0; transform:translateX(10px); } to{ opacity:1; transform:translateX(0); } }
+
 .alert-top { display: flex; align-items: center; justify-content: space-between; }
 .alert-ticker { font-size: 12px; font-weight: 700; color: var(--text0); }
 .alert-time { font-size: 9px; color: var(--text2); }
-.alert-type { font-size: 8px; padding: 1px 6px; border-radius: 2px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+.alert-type {
+  font-size: 8px; padding: 1px 6px; border-radius: 2px;
+  font-weight: 600; letter-spacing: 1px; text-transform: uppercase;
+}
 .alert-msg { font-size: 10px; color: var(--text1); line-height: 1.4; }
 .alert-detail { font-size: 9px; color: var(--text2); font-family: var(--font-mono); }
+
+/* Criteria panel */
 .criteria-group { padding: 10px 12px; border-bottom: 1px solid var(--border); }
 .cg-title { font-size: 8px; color: var(--text2); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px; }
-.crit-row { display: flex; align-items: center; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--border); }
+.crit-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 4px 0; border-bottom: 1px solid var(--border);
+}
 .crit-row:last-child { border-bottom: none; }
 .crit-name { font-size: 10px; color: var(--text1); }
-.crit-val { font-size: 10px; font-weight: 600; font-family: var(--font-mono); }
+.crit-val  { font-size: 10px; font-weight: 600; font-family: var(--font-mono); }
 .crit-val.pass { color: var(--accent); }
 .crit-val.fail { color: var(--red); }
 .crit-val.warn { color: var(--yellow); }
-.journal-entry { padding: 8px 12px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 3px; }
+
+/* Journal panel */
+.journal-entry {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 3px;
+}
 .je-top { display: flex; align-items: center; justify-content: space-between; }
 .je-ticker { font-size: 11px; font-weight: 600; color: var(--text0); }
 .je-pnl { font-size: 11px; font-weight: 700; }
@@ -288,11 +358,19 @@ body::before {
 .je-pnl.loss { color: var(--red); }
 .je-details { font-size: 9px; color: var(--text2); display: flex; gap: 8px; }
 .je-setup { font-size: 9px; color: var(--text1); }
-.je-grade { font-size: 8px; padding: 1px 5px; border-radius: 2px; font-weight: 700; }
+.je-grade {
+  font-size: 8px; padding: 1px 5px; border-radius: 2px; font-weight: 700;
+}
 .grade-a { background: var(--accent-d); color: var(--accent); border: 1px solid var(--accent2); }
 .grade-b { background: var(--yellow-d); color: var(--yellow); border: 1px solid #664400; }
 .grade-f { background: var(--red-d); color: var(--red); border: 1px solid #660000; }
-.stats-bar { display: grid; grid-template-columns: repeat(4,1fr); border-bottom: 1px solid var(--border); background: var(--bg0); }
+
+/* Stats bar */
+.stats-bar {
+  display: grid; grid-template-columns: repeat(4,1fr);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg0);
+}
 .stat-box { padding: 8px 10px; border-right: 1px solid var(--border); }
 .stat-box:last-child { border-right: none; }
 .stat-label { font-size: 7px; color: var(--text2); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 3px; }
@@ -301,35 +379,65 @@ body::before {
 .stat-val.red { color: var(--red); }
 .stat-val.yellow { color: var(--yellow); }
 .stat-val.white { color: var(--text0); }
-.add-ticker-form { display: flex; gap: 6px; padding: 8px 12px; background: var(--bg0); border-top: 1px solid var(--border); }
-.add-input { flex: 1; background: var(--bg2); border: 1px solid var(--border2); color: var(--text0); font-family: var(--font-mono); font-size: 11px; padding: 5px 8px; border-radius: 3px; outline: none; text-transform: uppercase; }
+
+/* Add ticker form */
+.add-ticker-form {
+  display: flex; gap: 6px; padding: 8px 12px;
+  background: var(--bg0);
+  border-top: 1px solid var(--border);
+}
+.add-input {
+  flex: 1; background: var(--bg2); border: 1px solid var(--border2);
+  color: var(--text0); font-family: var(--font-mono); font-size: 11px;
+  padding: 5px 8px; border-radius: 3px; outline: none;
+  text-transform: uppercase;
+}
 .add-input:focus { border-color: var(--accent2); }
 .add-input::placeholder { color: var(--text2); text-transform: none; }
-.add-btn { background: var(--accent-d); border: 1px solid var(--accent2); color: var(--accent); font-family: var(--font-mono); font-size: 10px; padding: 5px 10px; border-radius: 3px; cursor: pointer; transition: all 0.1s; }
+.add-btn {
+  background: var(--accent-d); border: 1px solid var(--accent2);
+  color: var(--accent); font-family: var(--font-mono); font-size: 10px;
+  padding: 5px 10px; border-radius: 3px; cursor: pointer;
+  transition: all 0.1s;
+}
 .add-btn:hover { background: var(--accent); color: var(--bg0); }
-.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 120px; color: var(--text2); gap: 6px; font-size: 10px; min-height: 180px; }
+
+/* Empty state */
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  height: 120px; color: var(--text2); gap: 6px;
+  font-size: 10px;
+}
 .empty-state .es-icon { font-size: 24px; opacity: 0.3; }
+
+/* Scrollbar global */
 ::-webkit-scrollbar { width: 3px; height: 3px; }
 ::-webkit-scrollbar-track { background: var(--bg0); }
 ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
-.install-note { padding: 5px 14px; background: var(--bg1); border-bottom: 1px solid var(--border); font-size: 9px; color: var(--text2); display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+/* Responsive note */
+.install-note {
+  padding: 5px 14px;
+  background: var(--bg1);
+  border-bottom: 1px solid var(--border);
+  font-size: 9px; color: var(--text2);
+  display: flex; align-items: center; gap: 8px;
+  flex-shrink: 0;
+}
 .install-note a { color: var(--accent); text-decoration: none; }
 .install-note a:hover { text-decoration: underline; }
-@media (max-width: 1280px) {
-  .layout { grid-template-columns: minmax(220px, 250px) minmax(0, 1fr) minmax(260px, 300px); }
-}
-@media (max-width: 1080px) {
-  .layout { grid-template-columns: 1fr; grid-template-rows: auto minmax(480px, 1fr) auto; height: auto; overflow: visible; }
-  .sidebar, .right-panel { max-width: none; min-width: 0; }
-  .main { min-height: 60vh; }
-}
 </style>
 </head>
 <body>
+
+<!-- ── TOP BAR ── -->
 <div class="topbar">
   <div class="topbar-left">
     <div class="logo">RC SCANNER<span>// Dashboard v1.0</span></div>
-    <div class="market-status"><div class="status-dot" id="statusDot"></div><span id="marketStatus">Checking...</span></div>
+    <div class="market-status">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="marketStatus">Checking...</span>
+    </div>
   </div>
   <div class="topbar-right">
     <span id="sessionLabel" class="session-badge">—</span>
@@ -337,31 +445,80 @@ body::before {
     <div>ET <span class="clock" id="clockET" style="color:var(--text1)">--:--:--</span></div>
   </div>
 </div>
+
+<!-- ── INSTALL NOTE ── -->
 <div class="install-note">
   ℹ️ TradingView charts load automatically for the selected ticker. To use your scanners: open TradingView → Pine Script Editor → paste the scanner code → Add to Chart.
   &nbsp;|&nbsp; 📱 For mobile: bookmark this file in Chrome for Android or Safari for iOS.
 </div>
+
+<!-- ── MAIN LAYOUT ── -->
 <div class="layout">
+
+  <!-- ── LEFT SIDEBAR ── -->
   <div class="sidebar">
+
+    <!-- Scanner filter -->
     <div class="sidebar-section">
       <div class="sidebar-title">Active Scanner</div>
       <div class="scanner-select">
-        <button class="sc-btn" data-scanner="gapper" onclick="setScanner('gapper',this)"><span class="sc-icon">📡</span><div class="sc-info"><span class="sc-name">Pre-Mkt Gapper</span><span class="sc-time">05:00 – 08:00 UK</span></div></button>
-        <button class="sc-btn active" data-scanner="hod" onclick="setScanner('hod',this)"><span class="sc-icon">⭐</span><div class="sc-info"><span class="sc-name">HOD Momentum</span><span class="sc-time">08:00 – 16:00 UK</span></div></button>
-        <button class="sc-btn" data-scanner="reversal" onclick="setScanner('reversal',this)"><span class="sc-icon">↕</span><div class="sc-info"><span class="sc-name">Reversal</span><span class="sc-time">Advanced use</span></div></button>
-        <button class="sc-btn" data-scanner="continuation" onclick="setScanner('continuation',this)"><span class="sc-icon">🌙</span><div class="sc-info"><span class="sc-name">Continuation / AH</span><span class="sc-time">15:00+ UK</span></div></button>
+        <button class="sc-btn" data-scanner="gapper" onclick="setScanner('gapper',this)">
+          <span class="sc-icon">📡</span>
+          <div class="sc-info">
+            <span class="sc-name">Pre-Mkt Gapper</span>
+            <span class="sc-time">05:00 – 08:00 UK</span>
+          </div>
+        </button>
+        <button class="sc-btn active" data-scanner="hod" onclick="setScanner('hod',this)">
+          <span class="sc-icon">⭐</span>
+          <div class="sc-info">
+            <span class="sc-name">HOD Momentum</span>
+            <span class="sc-time">08:00 – 16:00 UK</span>
+          </div>
+        </button>
+        <button class="sc-btn" data-scanner="reversal" onclick="setScanner('reversal',this)">
+          <span class="sc-icon">↕</span>
+          <div class="sc-info">
+            <span class="sc-name">Reversal</span>
+            <span class="sc-time">Advanced use</span>
+          </div>
+        </button>
+        <button class="sc-btn" data-scanner="continuation" onclick="setScanner('continuation',this)">
+          <span class="sc-icon">🌙</span>
+          <div class="sc-info">
+            <span class="sc-name">Continuation / AH</span>
+            <span class="sc-time">15:00+ UK</span>
+          </div>
+        </button>
       </div>
     </div>
-    <div class="sidebar-title">Watchlist <button onclick="clearWatchlist()">Clear</button></div>
+
+    <!-- Watchlist -->
+    <div class="sidebar-title">
+      Watchlist
+      <button onclick="clearWatchlist()">Clear</button>
+    </div>
     <div class="watchlist" id="watchlist"></div>
+
+    <!-- Add ticker -->
     <div class="add-ticker-form">
-      <input class="add-input" id="tickerInput" placeholder="Add ticker (e.g. AAPL)" maxlength="10" onkeydown="if(event.key==='Enter') addTicker()">
+      <input class="add-input" id="tickerInput" placeholder="Add ticker (e.g. AAPL)" maxlength="10"
+        onkeydown="if(event.key==='Enter') addTicker()">
       <button class="add-btn" onclick="addTicker()">+ ADD</button>
     </div>
+
   </div>
+
+  <!-- ── MAIN AREA ── -->
   <div class="main">
+
+    <!-- Chart top bar -->
     <div class="chart-bar">
-      <div class="chart-bar-left"><span class="active-ticker" id="activeTickerLabel">Select a ticker</span><span class="active-price" id="activePriceLabel"></span><span class="active-change" id="activeChangeLabel"></span></div>
+      <div class="chart-bar-left">
+        <span class="active-ticker" id="activeTickerLabel">Select a ticker</span>
+        <span class="active-price" id="activePriceLabel"></span>
+        <span class="active-change" id="activeChangeLabel"></span>
+      </div>
       <div class="tf-btns">
         <button class="tf-btn active" data-tf="1" onclick="setTimeframe('1',this)">1M</button>
         <button class="tf-btn" data-tf="5" onclick="setTimeframe('5',this)">5M</button>
@@ -370,135 +527,654 @@ body::before {
         <button class="tf-btn" data-tf="D" onclick="setTimeframe('D',this)">1D</button>
       </div>
     </div>
-    <div class="chart-container"><div id="tradingview-chart"></div></div>
+
+    <!-- TradingView chart -->
+    <div class="chart-container">
+      <div id="tradingview-chart"></div>
+    </div>
+
+    <!-- Scanner checklist strip -->
     <div class="checklist-strip" id="checklistStrip">
-      <div class="signal-strip-item"><div class="signal-label">Signal</div><div class="signal-value sv-none" id="sigMain">— Select ticker</div></div>
-      <div class="check-item"><div class="check-label">Day Gain</div><div class="check-value" id="chkGain"><span class="check-dot"></span>—</div></div>
-      <div class="check-item"><div class="check-label">Price Range</div><div class="check-value" id="chkPrice"><span class="check-dot"></span>—</div></div>
-      <div class="check-item"><div class="check-label">Rel Volume</div><div class="check-value" id="chkVol"><span class="check-dot"></span>—</div></div>
-      <div class="check-item"><div class="check-label">Above VWAP</div><div class="check-value" id="chkVwap"><span class="check-dot"></span>—</div></div>
-      <div class="check-item"><div class="check-label">MACD Bull</div><div class="check-value" id="chkMacd"><span class="check-dot"></span>—</div></div>
-      <div class="check-item"><div class="check-label">EMA 9>20</div><div class="check-value" id="chkEma"><span class="check-dot"></span>—</div></div>
-      <div class="check-item"><div class="check-label">Near HOD</div><div class="check-value" id="chkHod"><span class="check-dot"></span>—</div></div>
-      <div class="check-item"><div class="check-label">Float</div><div class="check-value" id="chkFloat"><span class="check-dot warn"></span><span class="warn">Manual</span></div></div>
-      <div class="check-item"><div class="check-label">Catalyst</div><div class="check-value" id="chkCat"><span class="check-dot warn"></span><span class="warn">Manual</span></div></div>
+      <div class="signal-strip-item">
+        <div class="signal-label">Signal</div>
+        <div class="signal-value sv-none" id="sigMain">— Select ticker</div>
+      </div>
+      <div class="check-item">
+        <div class="check-label">Day Gain</div>
+        <div class="check-value" id="chkGain"><span class="check-dot"></span>—</div>
+      </div>
+      <div class="check-item">
+        <div class="check-label">Price Range</div>
+        <div class="check-value" id="chkPrice"><span class="check-dot"></span>—</div>
+      </div>
+      <div class="check-item">
+        <div class="check-label">Rel Volume</div>
+        <div class="check-value" id="chkVol"><span class="check-dot"></span>—</div>
+      </div>
+      <div class="check-item">
+        <div class="check-label">Above VWAP</div>
+        <div class="check-value" id="chkVwap"><span class="check-dot"></span>—</div>
+      </div>
+      <div class="check-item">
+        <div class="check-label">MACD Bull</div>
+        <div class="check-value" id="chkMacd"><span class="check-dot"></span>—</div>
+      </div>
+      <div class="check-item">
+        <div class="check-label">EMA 9>20</div>
+        <div class="check-value" id="chkEma"><span class="check-dot"></span>—</div>
+      </div>
+      <div class="check-item">
+        <div class="check-label">Near HOD</div>
+        <div class="check-value" id="chkHod"><span class="check-dot"></span>—</div>
+      </div>
+      <div class="check-item">
+        <div class="check-label">Float</div>
+        <div class="check-value" id="chkFloat"><span class="check-dot warn"></span><span class="warn">Manual</span></div>
+      </div>
+      <div class="check-item">
+        <div class="check-label">Catalyst</div>
+        <div class="check-value" id="chkCat"><span class="check-dot warn"></span><span class="warn">Manual</span></div>
+      </div>
     </div>
+
   </div>
+
+  <!-- ── RIGHT PANEL ── -->
   <div class="right-panel">
+
+    <!-- Stats bar -->
     <div class="stats-bar">
-      <div class="stat-box"><div class="stat-label">Win Rate</div><div class="stat-val green" id="statWR">—</div></div>
-      <div class="stat-box"><div class="stat-label">Today P&amp;L</div><div class="stat-val white" id="statPnl">£0</div></div>
-      <div class="stat-box"><div class="stat-label">Trades</div><div class="stat-val yellow" id="statTrades">0</div></div>
-      <div class="stat-box"><div class="stat-label">Alerts</div><div class="stat-val white" id="statAlerts">0</div></div>
+      <div class="stat-box">
+        <div class="stat-label">Win Rate</div>
+        <div class="stat-val green" id="statWR">—</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Today P&L</div>
+        <div class="stat-val white" id="statPnl">£0</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Trades</div>
+        <div class="stat-val yellow" id="statTrades">0</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Alerts</div>
+        <div class="stat-val white" id="statAlerts">0</div>
+      </div>
     </div>
+
+    <!-- Panel tabs -->
     <div class="panel-tabs">
       <div class="panel-tab active" onclick="showPanel('alerts',this)">Alerts</div>
       <div class="panel-tab" onclick="showPanel('criteria',this)">Criteria</div>
       <div class="panel-tab" onclick="showPanel('journal',this)">Journal</div>
     </div>
-    <div class="panel-content" id="panel-alerts"><div id="alertFeed"><div class="empty-state"><div class="es-icon">📡</div><div>No alerts yet</div><div style="font-size:9px">Add tickers to watchlist to begin</div></div></div></div>
-    <div class="panel-content" id="panel-criteria" style="display:none">
-      <div class="criteria-group"><div class="cg-title">Scanner 1 — Pre-Market Gapper</div><div class="crit-row"><span class="crit-name">Gap %</span><span class="crit-val pass">≥ 4% (strong ≥7%)</span></div><div class="crit-row"><span class="crit-name">Price</span><span class="crit-val pass">$1 – $20</span></div><div class="crit-row"><span class="crit-name">Rel Volume</span><span class="crit-val pass">≥ 2× avg</span></div><div class="crit-row"><span class="crit-name">Pre-mkt vol</span><span class="crit-val pass">≥ 100k shares</span></div></div>
-      <div class="criteria-group"><div class="cg-title">Scanner 2 — HOD Momentum ⭐ Primary</div><div class="crit-row"><span class="crit-name">Day gain</span><span class="crit-val pass">≥ 10%</span></div><div class="crit-row"><span class="crit-name">Rel Volume</span><span class="crit-val pass">≥ 5× avg</span></div><div class="crit-row"><span class="crit-name">Price</span><span class="crit-val pass">$1 – $20</span></div><div class="crit-row"><span class="crit-name">Above VWAP</span><span class="crit-val pass">Required</span></div><div class="crit-row"><span class="crit-name">MACD</span><span class="crit-val pass">Line > Signal</span></div><div class="crit-row"><span class="crit-name">Near HOD</span><span class="crit-val pass">Within 1% of day high</span></div><div class="crit-row"><span class="crit-name">Float</span><span class="crit-val warn">&lt; 20M (manual check)</span></div><div class="crit-row"><span class="crit-name">Catalyst</span><span class="crit-val warn">News preferred (manual)</span></div></div>
-      <div class="criteria-group"><div class="cg-title">Scanner 3 — Reversal (Advanced)</div><div class="crit-row"><span class="crit-name">RSI Overbought</span><span class="crit-val fail">≥ 75 → reversal down</span></div><div class="crit-row"><span class="crit-name">RSI Oversold</span><span class="crit-val pass">≤ 25 → reversal up</span></div><div class="crit-row"><span class="crit-name">Consec candles</span><span class="crit-val warn">4+ same direction</span></div><div class="crit-row"><span class="crit-name">Red-to-Green</span><span class="crit-val pass">Cross above day open</span></div><div class="crit-row"><span class="crit-name">52-Wk High</span><span class="crit-val pass">Breakout signal</span></div></div>
-      <div class="criteria-group"><div class="cg-title">Scanner 4 — Continuation / After Hours</div><div class="crit-row"><span class="crit-name">2-wk range</span><span class="crit-val pass">≥ 15% big mover</span></div><div class="crit-row"><span class="crit-name">Range position</span><span class="crit-val pass">Top 80% of range</span></div><div class="crit-row"><span class="crit-name">AH move</span><span class="crit-val pass">≥ 3% after close</span></div><div class="crit-row"><span class="crit-name">Halt alert</span><span class="crit-val fail">Vol spike ≥ 10×</span></div></div>
-      <div class="criteria-group"><div class="cg-title">Ross Cameron Entry Rules (Always)</div><div class="crit-row"><span class="crit-name">Entry type</span><span class="crit-val pass">Apex only (micro pullback)</span></div><div class="crit-row"><span class="crit-name">Stop loss</span><span class="crit-val fail">Low of pullback candle</span></div><div class="crit-row"><span class="crit-name">Target</span><span class="crit-val pass">2× risk minimum</span></div><div class="crit-row"><span class="crit-name">Max risk/trade</span><span class="crit-val warn">1% of capital = £10</span></div><div class="crit-row"><span class="crit-name">Max daily loss</span><span class="crit-val fail">3 losers → stop</span></div><div class="crit-row"><span class="crit-name">Position size</span><span class="crit-val warn">Start 25% of full size</span></div></div>
-    </div>
-    <div class="panel-content" id="panel-journal" style="display:none">
-      <div id="journalFeed"><div class="empty-state"><div class="es-icon">📓</div><div>No trades logged yet</div><div style="font-size:9px">Use the form below to log a trade</div></div></div>
-      <div style="padding:10px 12px;border-top:1px solid var(--border);background:var(--bg0);flex-shrink:0">
-        <div style="font-size:8px;color:var(--text2);letter-spacing:2px;text-transform:uppercase;margin-bottom:6px">Quick Trade Log</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px"><input class="add-input" id="jTicker" placeholder="Ticker" style="font-size:10px"><input class="add-input" id="jSetup" placeholder="Setup (e.g. Apex)" style="font-size:10px;text-transform:none"></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:6px"><input class="add-input" id="jEntry" placeholder="Entry $" type="number" style="font-size:10px"><input class="add-input" id="jExit" placeholder="Exit $" type="number" style="font-size:10px"><input class="add-input" id="jShares" placeholder="Shares" type="number" style="font-size:10px"></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px"><select class="add-input" id="jGrade" style="font-size:10px"><option value="">Grade</option><option value="A">A — Perfect</option><option value="B">B — Minor dev</option><option value="C">C — Broke rules/won</option><option value="F">F — Broke rules</option></select><button class="add-btn" onclick="logTrade()">LOG TRADE</button></div>
+
+    <!-- Panel: Alerts -->
+    <div class="panel-content" id="panel-alerts">
+      <div id="alertFeed">
+        <div class="empty-state">
+          <div class="es-icon">📡</div>
+          <div>No alerts yet</div>
+          <div style="font-size:9px">Add tickers to watchlist to begin</div>
+        </div>
       </div>
     </div>
+
+    <!-- Panel: Criteria reference -->
+    <div class="panel-content" id="panel-criteria" style="display:none">
+      <div class="criteria-group">
+        <div class="cg-title">Scanner 1 — Pre-Market Gapper</div>
+        <div class="crit-row"><span class="crit-name">Gap %</span><span class="crit-val pass">≥ 4% (strong ≥7%)</span></div>
+        <div class="crit-row"><span class="crit-name">Price</span><span class="crit-val pass">$1 – $20</span></div>
+        <div class="crit-row"><span class="crit-name">Rel Volume</span><span class="crit-val pass">≥ 2× avg</span></div>
+        <div class="crit-row"><span class="crit-name">Pre-mkt vol</span><span class="crit-val pass">≥ 100k shares</span></div>
+      </div>
+      <div class="criteria-group">
+        <div class="cg-title">Scanner 2 — HOD Momentum ⭐ Primary</div>
+        <div class="crit-row"><span class="crit-name">Day gain</span><span class="crit-val pass">≥ 10%</span></div>
+        <div class="crit-row"><span class="crit-name">Rel Volume</span><span class="crit-val pass">≥ 5× avg</span></div>
+        <div class="crit-row"><span class="crit-name">Price</span><span class="crit-val pass">$1 – $20</span></div>
+        <div class="crit-row"><span class="crit-name">Above VWAP</span><span class="crit-val pass">Required</span></div>
+        <div class="crit-row"><span class="crit-name">MACD</span><span class="crit-val pass">Line > Signal</span></div>
+        <div class="crit-row"><span class="crit-name">Near HOD</span><span class="crit-val pass">Within 1% of day high</span></div>
+        <div class="crit-row"><span class="crit-name">Float</span><span class="crit-val warn">< 20M (manual check)</span></div>
+        <div class="crit-row"><span class="crit-name">Catalyst</span><span class="crit-val warn">News preferred (manual)</span></div>
+      </div>
+      <div class="criteria-group">
+        <div class="cg-title">Scanner 3 — Reversal (Advanced)</div>
+        <div class="crit-row"><span class="crit-name">RSI Overbought</span><span class="crit-val fail">≥ 75 → reversal down</span></div>
+        <div class="crit-row"><span class="crit-name">RSI Oversold</span><span class="crit-val pass">≤ 25 → reversal up</span></div>
+        <div class="crit-row"><span class="crit-name">Consec candles</span><span class="crit-val warn">4+ same direction</span></div>
+        <div class="crit-row"><span class="crit-name">Red-to-Green</span><span class="crit-val pass">Cross above day open</span></div>
+        <div class="crit-row"><span class="crit-name">52-Wk High</span><span class="crit-val pass">Breakout signal</span></div>
+      </div>
+      <div class="criteria-group">
+        <div class="cg-title">Scanner 4 — Continuation / After Hours</div>
+        <div class="crit-row"><span class="crit-name">2-wk range</span><span class="crit-val pass">≥ 15% big mover</span></div>
+        <div class="crit-row"><span class="crit-name">Range position</span><span class="crit-val pass">Top 80% of range</span></div>
+        <div class="crit-row"><span class="crit-name">AH move</span><span class="crit-val pass">≥ 3% after close</span></div>
+        <div class="crit-row"><span class="crit-name">Halt alert</span><span class="crit-val fail">Vol spike ≥ 10×</span></div>
+      </div>
+      <div class="criteria-group">
+        <div class="cg-title">Ross Cameron Entry Rules (Always)</div>
+        <div class="crit-row"><span class="crit-name">Entry type</span><span class="crit-val pass">Apex only (micro pullback)</span></div>
+        <div class="crit-row"><span class="crit-name">Stop loss</span><span class="crit-val fail">Low of pullback candle</span></div>
+        <div class="crit-row"><span class="crit-name">Target</span><span class="crit-val pass">2× risk minimum</span></div>
+        <div class="crit-row"><span class="crit-name">Max risk/trade</span><span class="crit-val warn">1% of capital = £10</span></div>
+        <div class="crit-row"><span class="crit-name">Max daily loss</span><span class="crit-val fail">3 losers → stop</span></div>
+        <div class="crit-row"><span class="crit-name">Position size</span><span class="crit-val warn">Start 25% of full size</span></div>
+      </div>
+    </div>
+
+    <!-- Panel: Journal -->
+    <div class="panel-content" id="panel-journal" style="display:none">
+      <div id="journalFeed">
+        <div class="empty-state">
+          <div class="es-icon">📓</div>
+          <div>No trades logged yet</div>
+          <div style="font-size:9px">Use the form below to log a trade</div>
+        </div>
+      </div>
+      <!-- Quick log form -->
+      <div style="padding:10px 12px;border-top:1px solid var(--border);background:var(--bg0);flex-shrink:0">
+        <div style="font-size:8px;color:var(--text2);letter-spacing:2px;text-transform:uppercase;margin-bottom:6px">Quick Trade Log</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
+          <input class="add-input" id="jTicker"  placeholder="Ticker" style="font-size:10px">
+          <input class="add-input" id="jSetup"   placeholder="Setup (e.g. Apex)" style="font-size:10px;text-transform:none">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:6px">
+          <input class="add-input" id="jEntry"  placeholder="Entry $" type="number" style="font-size:10px">
+          <input class="add-input" id="jExit"   placeholder="Exit $"  type="number" style="font-size:10px">
+          <input class="add-input" id="jShares" placeholder="Shares"  type="number" style="font-size:10px">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+          <select class="add-input" id="jGrade" style="font-size:10px">
+            <option value="">Grade</option>
+            <option value="A">A — Perfect</option>
+            <option value="B">B — Minor dev</option>
+            <option value="C">C — Broke rules/won</option>
+            <option value="F">F — Broke rules</option>
+          </select>
+          <button class="add-btn" onclick="logTrade()">LOG TRADE</button>
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
+
 <script>
+// ═══════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════
 let watchlist = JSON.parse(localStorage.getItem('rc_watchlist') || '[]');
 if (!watchlist.length) watchlist = [
-  { symbol:'AAPL', name:'Apple Inc', signals:['HOD','APEX'], change:14.2 },
-  { symbol:'TSLA', name:'Tesla Inc', signals:['FLAG'], change:10.8 },
-  { symbol:'NVDA', name:'NVIDIA Corp', signals:[], change:4.1 },
-  { symbol:'AMZN', name:'Amazon.com', signals:['GAP'], change:7.3 },
-  { symbol:'GBPUSD', name:'GBP/USD Forex', signals:['REV'], change:-0.4 },
-  { symbol:'EURUSD', name:'EUR/USD Forex', signals:['WATCH'], change:0.2 },
+  { symbol:'AAPL', name:'Apple Inc',        signals:['HOD','APEX'], change:14.2 },
+  { symbol:'TSLA', name:'Tesla Inc',         signals:['FLAG'],       change:10.8 },
+  { symbol:'NVDA', name:'NVIDIA Corp',       signals:[],             change:4.1  },
+  { symbol:'AMZN', name:'Amazon.com',        signals:['GAP'],        change:7.3  },
+  { symbol:'GBPUSD', name:'GBP/USD Forex',   signals:['REV'],        change:-0.4 },
+  { symbol:'EURUSD', name:'EUR/USD Forex',   signals:['WATCH'],      change:0.2  },
 ];
-let activeTicker = watchlist[0]?.symbol || '';
-let activeTimeframe = '1';
-let activeScanner = 'hod';
-let alerts = [];
-let trades = [];
-let tvWidget = null;
-let alertCount = 0;
+
+let activeTicker   = watchlist[0]?.symbol || '';
+let activeTimeframe= '1';
+let activeScanner  = 'hod';
+let alerts         = [];
+let trades         = [];
+let tvWidget       = null;
+let alertCount     = 0;
+
+// ═══════════════════════════════════════
+// CLOCK + MARKET STATUS
+// ═══════════════════════════════════════
 function updateClock() {
   const now = new Date();
   const ukTime = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/London' }));
   const etTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-  document.getElementById('clockUK').textContent = ukTime.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
-  document.getElementById('clockET').textContent = etTime.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+
+  document.getElementById('clockUK').textContent =
+    ukTime.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  document.getElementById('clockET').textContent =
+    etTime.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+
   const ukH = ukTime.getHours(), ukM = ukTime.getMinutes();
   const ukMins = ukH * 60 + ukM;
-  const ukDay = ukTime.getDay();
+  const ukDay  = ukTime.getDay(); // 0=Sun, 6=Sat
+
   let status = '', session = '', isOpen = false;
-  if (ukDay === 0 || ukDay === 6) { status = 'Market Closed (Weekend)'; session = 'WEEKEND'; isOpen = false; }
-  else if (ukMins < 5*60) { status = 'Pre-pre market'; session = 'CLOSED'; isOpen = false; }
-  else if (ukMins < 8*60) { status = 'Pre-Market Active'; session = 'PRE-MKT'; isOpen = true; }
-  else if (ukMins < 10*60) { status = 'London Open 🟢 Best window'; session = 'LONDON OPEN'; isOpen = true; }
-  else if (ukMins < 13*60+30) { status = 'Mid-Session'; session = 'MID SESSION'; isOpen = true; }
-  else if (ukMins < 16*60) { status = 'NY Overlap ⭐ Peak volume'; session = 'NY OVERLAP'; isOpen = true; }
-  else if (ukMins < 16*60+30) { status = 'Power Hour'; session = 'POWER HOUR'; isOpen = true; }
-  else if (ukMins < 21*60) { status = 'After Hours / US Only'; session = 'AFTER HOURS'; isOpen = true; }
-  else { status = 'Market Closed'; session = 'CLOSED'; isOpen = false; }
+
+  if (ukDay === 0 || ukDay === 6) {
+    status = 'Market Closed (Weekend)'; session = 'WEEKEND'; isOpen = false;
+  } else if (ukMins < 5*60) {
+    status = 'Pre-pre market'; session = 'CLOSED'; isOpen = false;
+  } else if (ukMins < 8*60) {
+    status = 'Pre-Market Active'; session = 'PRE-MKT'; isOpen = true;
+  } else if (ukMins < 10*60) {
+    status = 'London Open 🟢 Best window'; session = 'LONDON OPEN'; isOpen = true;
+  } else if (ukMins < 13*60+30) {
+    status = 'Mid-Session'; session = 'MID SESSION'; isOpen = true;
+  } else if (ukMins < 16*60) {
+    status = 'NY Overlap ⭐ Peak volume'; session = 'NY OVERLAP'; isOpen = true;
+  } else if (ukMins < 16*60+30) {
+    status = 'Power Hour'; session = 'POWER HOUR'; isOpen = true;
+  } else if (ukMins < 21*60) {
+    status = 'After Hours / US Only'; session = 'AFTER HOURS'; isOpen = true;
+  } else {
+    status = 'Market Closed'; session = 'CLOSED'; isOpen = false;
+  }
+
   document.getElementById('marketStatus').textContent = status;
   document.getElementById('sessionLabel').textContent = session;
   document.getElementById('statusDot').className = 'status-dot' + (isOpen ? '' : ' closed');
 }
-setInterval(updateClock, 1000); updateClock();
+setInterval(updateClock, 1000);
+updateClock();
+
+// ═══════════════════════════════════════
+// WATCHLIST RENDERING
+// ═══════════════════════════════════════
 function signalBadge(sig) {
-  const map = { APEX:'mb-apex', HOD:'mb-hod', FLAG:'mb-flag', SQZ:'mb-sqz', REV:'mb-rev', GAP:'mb-gap', WATCH:'mb-flag' };
-  const label = { APEX:'▲APEX', HOD:'HOD', FLAG:'🚩FLAG', SQZ:'⚡SQZ', REV:'↕REV', GAP:'📡GAP', WATCH:'👀' };
+  const map = {
+    'APEX':'mb-apex','HOD':'mb-hod','FLAG':'mb-flag',
+    'SQZ':'mb-sqz','REV':'mb-rev','GAP':'mb-gap','WATCH':'mb-flag'
+  };
+  const label = { 'APEX':'▲APEX','HOD':'HOD','FLAG':'🚩FLAG','SQZ':'⚡SQZ','REV':'↕REV','GAP':'📡GAP','WATCH':'👀' };
   return `<span class="mini-badge ${map[sig]||'mb-none'}">${label[sig]||sig}</span>`;
 }
+
 function renderWatchlist() {
   const el = document.getElementById('watchlist');
-  if (!watchlist.length) { el.innerHTML = '<div class="empty-state"><div class="es-icon">📋</div><div>Empty watchlist</div></div>'; return; }
-  el.innerHTML = watchlist.map(t => `<div class="ticker-item ${t.symbol===activeTicker?'active':''}" onclick="selectTicker('${t.symbol}')"><div class="ti-left"><div class="ti-symbol">${t.symbol}</div><div class="ti-name">${t.name||''}</div><div class="ti-signals">${(t.signals||[]).map(signalBadge).join('')||'<span class="mini-badge mb-none">—</span>'}</div></div><div class="ti-right"><div class="ti-change ${t.change>0?'up':t.change<0?'down':'flat'}">${t.change>0?'+':''}${(t.change||0).toFixed(1)}%</div></div></div>`).join('');
+  if (!watchlist.length) {
+    el.innerHTML = '<div class="empty-state"><div class="es-icon">📋</div><div>Empty watchlist</div></div>';
+    return;
+  }
+  el.innerHTML = watchlist.map(t => `
+    <div class="ticker-item ${t.symbol===activeTicker?'active':''}" onclick="selectTicker('${t.symbol}')">
+      <div class="ti-left">
+        <div class="ti-symbol">${t.symbol}</div>
+        <div class="ti-name">${t.name||''}</div>
+        <div class="ti-signals">${(t.signals||[]).map(signalBadge).join('')||'<span class="mini-badge mb-none">—</span>'}</div>
+      </div>
+      <div class="ti-right">
+        <div class="ti-change ${t.change>0?'up':t.change<0?'down':'flat'}">
+          ${t.change>0?'+':''}${(t.change||0).toFixed(1)}%
+        </div>
+      </div>
+    </div>`).join('');
 }
+
 function addTicker() {
-  const input = document.getElementById('tickerInput'); const sym = input.value.trim().toUpperCase(); if (!sym) return; if (watchlist.find(t => t.symbol === sym)) { input.value=''; return; }
-  watchlist.push({ symbol:sym, name:'', signals:[], change:0 }); saveWatchlist(); input.value=''; renderWatchlist(); addAlertToFeed(sym, 'gap', '📡 Added to watchlist', `${sym} added — load scanner in TradingView to analyse`);
+  const input = document.getElementById('tickerInput');
+  const sym = input.value.trim().toUpperCase();
+  if (!sym) return;
+  if (watchlist.find(t => t.symbol === sym)) { input.value=''; return; }
+  watchlist.push({ symbol:sym, name:'', signals:[], change:0 });
+  saveWatchlist();
+  input.value = '';
+  renderWatchlist();
+  addAlertToFeed(sym, 'gap', '📡 Added to watchlist', `${sym} added — load scanner in TradingView to analyse`);
 }
-function clearWatchlist() { if (!confirm('Clear watchlist?')) return; watchlist = []; saveWatchlist(); renderWatchlist(); }
-function saveWatchlist() { localStorage.setItem('rc_watchlist', JSON.stringify(watchlist)); }
+
+function clearWatchlist() {
+  if (!confirm('Clear watchlist?')) return;
+  watchlist = [];
+  saveWatchlist();
+  renderWatchlist();
+}
+
+function saveWatchlist() {
+  localStorage.setItem('rc_watchlist', JSON.stringify(watchlist));
+}
+
+// ═══════════════════════════════════════
+// TICKER SELECTION + TRADINGVIEW CHART
+// ═══════════════════════════════════════
 function selectTicker(symbol) {
-  activeTicker = symbol; renderWatchlist(); document.getElementById('activeTickerLabel').textContent = symbol;
-  const t = watchlist.find(w => w.symbol === symbol); if (t) { const chg = t.change || 0; document.getElementById('activePriceLabel').textContent = ''; document.getElementById('activeChangeLabel').textContent = (chg>0?'+':'')+chg.toFixed(1)+'%'; document.getElementById('activeChangeLabel').style.color = chg>0?'var(--accent)':chg<0?'var(--red)':'var(--text1)'; }
-  updateChecklistStrip(symbol); loadTVChart(symbol, activeTimeframe);
+  activeTicker = symbol;
+  renderWatchlist();
+  document.getElementById('activeTickerLabel').textContent = symbol;
+  const t = watchlist.find(w => w.symbol === symbol);
+  if (t) {
+    const chg = t.change || 0;
+    document.getElementById('activePriceLabel').textContent = '';
+    document.getElementById('activeChangeLabel').textContent =
+      (chg>0?'+':'')+chg.toFixed(1)+'%';
+    document.getElementById('activeChangeLabel').style.color =
+      chg>0?'var(--accent)':chg<0?'var(--red)':'var(--text1)';
+  }
+  updateChecklistStrip(symbol);
+  loadTVChart(symbol, activeTimeframe);
 }
+
 function loadTVChart(symbol, tf) {
-  const container = document.getElementById('tradingview-chart'); container.innerHTML = '';
-  try { tvWidget = new TradingView.widget({ container_id:'tradingview-chart', symbol:symbol, interval:tf, timezone:'Europe/London', theme:'dark', style:'1', locale:'en', toolbar_bg:'#080e16', enable_publishing:false, hide_top_toolbar:false, hide_legend:false, save_image:false, height:'100%', width:'100%', studies:['MAExp@tv-basicstudies','VWAP@tv-basicstudies','MACD@tv-basicstudies','Volume@tv-basicstudies'], overrides:{'mainSeriesProperties.candleStyle.upColor':'#00ff88','mainSeriesProperties.candleStyle.downColor':'#ff4444','mainSeriesProperties.candleStyle.borderUpColor':'#00ff88','mainSeriesProperties.candleStyle.borderDownColor':'#ff4444','mainSeriesProperties.candleStyle.wickUpColor':'#00cc6a','mainSeriesProperties.candleStyle.wickDownColor':'#cc3333','paneProperties.background':'#04080d','paneProperties.backgroundType':'solid','paneProperties.gridLinesMode':'both','paneProperties.vertGridProperties.color':'#0c1420','paneProperties.horzGridProperties.color':'#0c1420','scalesProperties.textColor':'#4a6080','scalesProperties.lineColor':'#1a2740'}}); }
-  catch(e) { container.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:var(--text2)"><div style="font-size:32px;opacity:0.3">📈</div><div style="font-size:11px">TradingView chart for <strong style="color:var(--accent)">${symbol}</strong></div><a href="https://www.tradingview.com/chart/?symbol=${symbol}" target="_blank" style="color:var(--accent);font-size:10px;border:1px solid var(--accent2);padding:6px 14px;border-radius:4px;text-decoration:none">Open in TradingView →</a><div style="font-size:9px;color:var(--text2)">Or allow TradingView scripts to load in this file</div></div>`; }
+  const container = document.getElementById('tradingview-chart');
+  container.innerHTML = '';
+  try {
+    tvWidget = new TradingView.widget({
+      container_id: 'tradingview-chart',
+      symbol: symbol,
+      interval: tf,
+      timezone: 'Europe/London',
+      theme: 'dark',
+      style: '1',
+      locale: 'en',
+      toolbar_bg: '#080e16',
+      enable_publishing: false,
+      hide_top_toolbar: false,
+      hide_legend: false,
+      save_image: false,
+      height: '100%',
+      width: '100%',
+      studies: [
+        'MAExp@tv-basicstudies',
+        'VWAP@tv-basicstudies',
+        'MACD@tv-basicstudies',
+        'Volume@tv-basicstudies'
+      ],
+      overrides: {
+        'mainSeriesProperties.candleStyle.upColor':   '#00ff88',
+        'mainSeriesProperties.candleStyle.downColor': '#ff4444',
+        'mainSeriesProperties.candleStyle.borderUpColor':   '#00ff88',
+        'mainSeriesProperties.candleStyle.borderDownColor': '#ff4444',
+        'mainSeriesProperties.candleStyle.wickUpColor':   '#00cc6a',
+        'mainSeriesProperties.candleStyle.wickDownColor': '#cc3333',
+        'paneProperties.background': '#04080d',
+        'paneProperties.backgroundType': 'solid',
+        'paneProperties.gridLinesMode': 'both',
+        'paneProperties.vertGridProperties.color': '#0c1420',
+        'paneProperties.horzGridProperties.color': '#0c1420',
+        'scalesProperties.textColor': '#4a6080',
+        'scalesProperties.lineColor': '#1a2740',
+      }
+    });
+  } catch(e) {
+    container.innerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:var(--text2)">
+        <div style="font-size:32px;opacity:0.3">📈</div>
+        <div style="font-size:11px">TradingView chart for <strong style="color:var(--accent)">${symbol}</strong></div>
+        <a href="https://www.tradingview.com/chart/?symbol=${symbol}" target="_blank"
+          style="color:var(--accent);font-size:10px;border:1px solid var(--accent2);padding:6px 14px;border-radius:4px;text-decoration:none">
+          Open in TradingView →
+        </a>
+        <div style="font-size:9px;color:var(--text2)">Or allow TradingView scripts to load in this file</div>
+      </div>`;
+  }
 }
-function setTimeframe(tf, el) { activeTimeframe = tf; document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active')); el.classList.add('active'); if (activeTicker) loadTVChart(activeTicker, tf); }
-function setCheck(id, pass, label, cls='') { const el = document.getElementById(id); if (!el) return; const dotCls = pass==='pass'?'pass':pass==='warn'?'warn':'fail'; el.className = 'check-value ' + (cls||pass); el.innerHTML = `<span class="check-dot ${dotCls}"></span><span>${label}</span>`; }
+
+function setTimeframe(tf, el) {
+  activeTimeframe = tf;
+  document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  if (activeTicker) loadTVChart(activeTicker, tf);
+}
+
+// ═══════════════════════════════════════
+// CHECKLIST STRIP
+// ═══════════════════════════════════════
+function setCheck(id, pass, label, cls='') {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const dotCls = pass==='pass'?'pass':pass==='warn'?'warn':'fail';
+  el.className = 'check-value ' + (cls||pass);
+  el.innerHTML = `<span class="check-dot ${dotCls}"></span><span>${label}</span>`;
+}
+
 function updateChecklistStrip(symbol) {
-  const t = watchlist.find(w => w.symbol === symbol); const sigs = t?.signals || []; const chg = t?.change || 0; const gainOk = chg >= 10; const gainWarn = chg >= 4 && chg < 10; setCheck('chkGain', gainOk?'pass':gainWarn?'warn':'fail', `${chg>0?'+':''}${chg.toFixed(1)}%`); const forexPairs = ['GBPUSD','EURUSD','USDJPY','GBPJPY','EURGBP','AUDUSD']; const isForex = forexPairs.some(f => symbol.includes(f.slice(0,3))); setCheck('chkPrice', 'warn', isForex?'Forex':'Manual'); setCheck('chkVol', sigs.length?'pass':'warn', sigs.length?'≥5x avg':'Check TV'); setCheck('chkVwap', sigs.includes('HOD')||sigs.includes('APEX')?'pass':'warn', sigs.includes('HOD')||sigs.includes('APEX')?'Above':'Check TV'); setCheck('chkMacd', sigs.includes('APEX')?'pass':'warn', sigs.includes('APEX')?'Bullish':'Check TV'); setCheck('chkEma', sigs.includes('HOD')||sigs.includes('APEX')?'pass':'warn', 'Check TV'); setCheck('chkHod', sigs.includes('HOD')||sigs.includes('APEX')?'pass':'warn', sigs.includes('HOD')||sigs.includes('APEX')?'Yes':'Check TV'); const sigEl = document.getElementById('sigMain'); if (sigs.includes('APEX')) { sigEl.textContent='▲ APEX ENTRY'; sigEl.className='signal-value sv-apex'; } else if (sigs.includes('HOD')) { sigEl.textContent='🟡 HOD MOMO'; sigEl.className='signal-value sv-hod'; } else if (sigs.includes('FLAG')) { sigEl.textContent='🚩 BULL FLAG'; sigEl.className='signal-value sv-watch'; } else if (sigs.includes('GAP')) { sigEl.textContent='📡 GAPPER'; sigEl.className='signal-value sv-watch'; } else if (sigs.includes('REV')) { sigEl.textContent='↕ REVERSAL'; sigEl.className='signal-value sv-none'; } else { sigEl.textContent='👀 WATCHING'; sigEl.className='signal-value sv-none'; }
+  const t = watchlist.find(w => w.symbol === symbol);
+  const sigs = t?.signals || [];
+  const chg  = t?.change  || 0;
+
+  const gainOk  = chg >= 10;
+  const gainWarn= chg >= 4 && chg < 10;
+  setCheck('chkGain',  gainOk?'pass':gainWarn?'warn':'fail', `${chg>0?'+':''}${chg.toFixed(1)}%`);
+
+  const forexPairs = ['GBPUSD','EURUSD','USDJPY','GBPJPY','EURGBP','AUDUSD'];
+  const isForex = forexPairs.some(f => symbol.includes(f.slice(0,3)));
+  setCheck('chkPrice', 'warn', isForex?'Forex':'Manual');
+  setCheck('chkVol',   sigs.length?'pass':'warn', sigs.length?'≥5x avg':'Check TV');
+  setCheck('chkVwap',  sigs.includes('HOD')||sigs.includes('APEX')?'pass':'warn',
+    sigs.includes('HOD')||sigs.includes('APEX')?'Above':'Check TV');
+  setCheck('chkMacd',  sigs.includes('APEX')?'pass':'warn',
+    sigs.includes('APEX')?'Bullish':'Check TV');
+  setCheck('chkEma',   sigs.includes('HOD')||sigs.includes('APEX')?'pass':'warn', 'Check TV');
+  setCheck('chkHod',   sigs.includes('HOD')||sigs.includes('APEX')?'pass':'warn',
+    sigs.includes('HOD')||sigs.includes('APEX')?'Yes':'Check TV');
+
+  // Main signal
+  const sigEl = document.getElementById('sigMain');
+  if (sigs.includes('APEX')) {
+    sigEl.textContent='▲ APEX ENTRY'; sigEl.className='signal-value sv-apex';
+  } else if (sigs.includes('HOD')) {
+    sigEl.textContent='🟡 HOD MOMO'; sigEl.className='signal-value sv-hod';
+  } else if (sigs.includes('FLAG')) {
+    sigEl.textContent='🚩 BULL FLAG'; sigEl.className='signal-value sv-watch';
+  } else if (sigs.includes('GAP')) {
+    sigEl.textContent='📡 GAPPER'; sigEl.className='signal-value sv-watch';
+  } else if (sigs.includes('REV')) {
+    sigEl.textContent='↕ REVERSAL'; sigEl.className='signal-value sv-none';
+  } else {
+    sigEl.textContent='👀 WATCHING'; sigEl.className='signal-value sv-none';
+  }
 }
-function setScanner(scanner, el) { activeScanner = scanner; document.querySelectorAll('.sc-btn').forEach(b => b.classList.remove('active')); el.classList.add('active'); addAlertToFeed('SYSTEM','gap',`Scanner changed to: ${scanner.toUpperCase()}`,'Apply the corresponding Pine Script in TradingView for this scanner.'); }
-function timeNow() { return new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'}); }
-const alertColors = { apex:'var(--accent)', hod:'#44ff88', flag:'var(--yellow)', sqz:'var(--orange)', rev:'var(--blue)', gap:'var(--teal)', exit:'var(--red)', cont:'var(--purple)' };
-const alertLabels = { apex:'▲ APEX', hod:'HOD MOMO', flag:'🚩 FLAG', sqz:'⚡ SQUEEZE', rev:'↕ REVERSAL', gap:'📡 GAPPER', exit:'🔴 EXIT', cont:'📈 CONTINUATION' };
+
+// ═══════════════════════════════════════
+// SCANNER SELECTOR
+// ═══════════════════════════════════════
+function setScanner(scanner, el) {
+  activeScanner = scanner;
+  document.querySelectorAll('.sc-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  addAlertToFeed('SYSTEM','gap',
+    `Scanner changed to: ${scanner.toUpperCase()}`,
+    'Apply the corresponding Pine Script in TradingView for this scanner.');
+}
+
+// ═══════════════════════════════════════
+// ALERT FEED
+// ═══════════════════════════════════════
+function timeNow() {
+  return new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+
+const alertColors = {
+  apex:'var(--accent)', hod:'#44ff88', flag:'var(--yellow)',
+  sqz:'var(--orange)', rev:'var(--blue)', gap:'var(--teal)',
+  exit:'var(--red)', cont:'var(--purple)'
+};
+const alertLabels = {
+  apex:'▲ APEX', hod:'HOD MOMO', flag:'🚩 FLAG',
+  sqz:'⚡ SQUEEZE', rev:'↕ REVERSAL', gap:'📡 GAPPER',
+  exit:'🔴 EXIT', cont:'📈 CONTINUATION'
+};
+
 function addAlertToFeed(ticker, type, title, detail) {
-  alertCount++; document.getElementById('statAlerts').textContent = alertCount; const feed = document.getElementById('alertFeed'); const emptyState = feed.querySelector('.empty-state'); if (emptyState) emptyState.remove(); const div = document.createElement('div'); div.className = `alert-item ${type}`; div.innerHTML = `<div class="alert-top"><div style="display:flex;align-items:center;gap:8px"><span class="alert-ticker">${ticker}</span><span class="alert-type" style="background:${alertColors[type]||'var(--border2)'}22;color:${alertColors[type]||'var(--text2)'};border:1px solid ${alertColors[type]||'var(--border)'}44">${alertLabels[type]||type.toUpperCase()}</span></div><span class="alert-time">${timeNow()}</span></div><div class="alert-msg">${title}</div><div class="alert-detail">${detail}</div>`; div.onclick = () => { if(watchlist.find(w=>w.symbol===ticker)) selectTicker(ticker); }; feed.insertBefore(div, feed.firstChild); while (feed.children.length > 50) feed.removeChild(feed.lastChild);
+  alertCount++;
+  document.getElementById('statAlerts').textContent = alertCount;
+  const feed = document.getElementById('alertFeed');
+  const emptyState = feed.querySelector('.empty-state');
+  if (emptyState) emptyState.remove();
+
+  const div = document.createElement('div');
+  div.className = `alert-item ${type}`;
+  div.innerHTML = `
+    <div class="alert-top">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="alert-ticker">${ticker}</span>
+        <span class="alert-type" style="background:${alertColors[type]||'var(--border2)'}22;color:${alertColors[type]||'var(--text2)'};border:1px solid ${alertColors[type]||'var(--border)'}44">
+          ${alertLabels[type]||type.toUpperCase()}
+        </span>
+      </div>
+      <span class="alert-time">${timeNow()}</span>
+    </div>
+    <div class="alert-msg">${title}</div>
+    <div class="alert-detail">${detail}</div>`;
+  div.onclick = () => { if(watchlist.find(w=>w.symbol===ticker)) selectTicker(ticker); };
+  feed.insertBefore(div, feed.firstChild);
+
+  // Keep max 50 alerts
+  while (feed.children.length > 50) feed.removeChild(feed.lastChild);
 }
-function showPanel(panel, el) { ['alerts','criteria','journal'].forEach(p => { document.getElementById('panel-'+p).style.display = p===panel?'block':'none'; }); document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active')); el.classList.add('active'); }
-function logTrade() { const ticker = document.getElementById('jTicker').value.trim().toUpperCase(); const setup = document.getElementById('jSetup').value.trim(); const entry = parseFloat(document.getElementById('jEntry').value); const exit = parseFloat(document.getElementById('jExit').value); const shares = parseInt(document.getElementById('jShares').value); const grade = document.getElementById('jGrade').value; if (!ticker||!entry||!exit||!shares) { alert('Please fill in Ticker, Entry, Exit and Shares'); return; } const pnl = (exit - entry) * shares; const win = pnl > 0; const pnlStr = (win?'+':'') + '£' + Math.abs(pnl).toFixed(2); trades.push({ ticker, setup, entry, exit, shares, pnl, grade, time: timeNow() }); const wins = trades.filter(t=>t.pnl>0).length; const totalPnl = trades.reduce((s,t)=>s+t.pnl, 0); document.getElementById('statTrades').textContent = trades.length; document.getElementById('statWR').textContent = trades.length ? Math.round(wins/trades.length*100)+'%' : '—'; const pnlEl = document.getElementById('statPnl'); pnlEl.textContent = (totalPnl>=0?'+':'')+'£'+Math.abs(totalPnl).toFixed(2); pnlEl.className = 'stat-val ' + (totalPnl>0?'green':totalPnl<0?'red':'white'); const feed = document.getElementById('journalFeed'); const emptyState = feed.querySelector('.empty-state'); if (emptyState) emptyState.remove(); const gradeClass = grade==='A'?'grade-a':grade==='B'?'grade-b':grade==='F'?'grade-f':''; const div = document.createElement('div'); div.className = 'journal-entry'; div.innerHTML = `<div class="je-top"><span class="je-ticker">${ticker}</span><span class="je-pnl ${win?'win':'loss'}">${pnlStr}</span></div><div class="je-details"><span>Entry £${entry.toFixed(2)}</span><span>Exit £${exit.toFixed(2)}</span><span>${shares} shares</span><span>${timeNow()}</span></div><div style="display:flex;align-items:center;justify-content:space-between;margin-top:2px"><span class="je-setup">${setup}</span>${grade?`<span class="je-grade ${gradeClass}">GRADE ${grade}</span>`:''}</div>`; feed.insertBefore(div, feed.firstChild); document.getElementById('jTicker').value=''; document.getElementById('jSetup').value=''; document.getElementById('jEntry').value=''; document.getElementById('jExit').value=''; document.getElementById('jShares').value=''; document.getElementById('jGrade').value=''; addAlertToFeed(ticker, win?'hod':'exit', 'Trade logged', `${pnlStr} | ${setup} | Entry £${entry.toFixed(2)} | Exit £${exit.toFixed(2)} | Shares ${shares} | Grade ${grade}`); }
-const demoAlerts = [ ['AAPL','apex','APEX ENTRY detected','Break above 186.80. Stop 185.40. Target 189.60. Check DOM in cTrader.'], ['TSLA','flag','BULL FLAG forming','Tight consolidation after surge. Watch for breakout above 244.50.'], ['GBPUSD','hod','HOD Momentum near high of day','Day gain 1.2% on forex. Rel vol elevated. Above VWAP.'], ['AMZN','gap','Pre-market gapper','Opening gap 7.3% vs close. Add to watchlist. Check news catalyst.'], ['EURUSD','rev','Reversal signal','RSI approaching oversold on 5M. Watch for red-to-green.'], ['NVDA','sqz','Squeeze Up detected','Range compression in 5 candles. Fast move expected.'] ]; let demoIdx = 0; function fireDemoAlert() { if (!watchlist.length) return; const [ticker, type, title, detail] = demoAlerts[demoIdx % demoAlerts.length]; demoIdx++; if (watchlist.find(w => w.symbol === ticker)) addAlertToFeed(ticker, type, title, detail); }
-function init() { renderWatchlist(); if (watchlist.length) selectTicker(watchlist[0].symbol); addAlertToFeed('SYSTEM','gap','Dashboard ready','Demo mode active. Add tickers to watchlist and load scanner Pine Scripts in TradingView. Alerts from TradingView webhooks will appear here.'); setTimeout(fireDemoAlert, 5000); setInterval(fireDemoAlert, 60000 + Math.random()*30000); }
-if (typeof TradingView !== 'undefined') init(); else window.addEventListener('load', init);
+
+// ═══════════════════════════════════════
+// PANEL TABS
+// ═══════════════════════════════════════
+function showPanel(panel, el) {
+  ['alerts','criteria','journal'].forEach(p => {
+    document.getElementById('panel-'+p).style.display = p===panel?'block':'none';
+  });
+  document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+}
+
+// ═══════════════════════════════════════
+// TRADE JOURNAL
+// ═══════════════════════════════════════
+function logTrade() {
+  const ticker = document.getElementById('jTicker').value.trim().toUpperCase();
+  const setup  = document.getElementById('jSetup').value.trim();
+  const entry  = parseFloat(document.getElementById('jEntry').value);
+  const exit   = parseFloat(document.getElementById('jExit').value);
+  const shares = parseInt(document.getElementById('jShares').value);
+  const grade  = document.getElementById('jGrade').value;
+
+  if (!ticker||!entry||!exit||!shares) {
+    alert('Please fill in Ticker, Entry, Exit and Shares'); return;
+  }
+
+  const pnl  = (exit - entry) * shares;
+  const win  = pnl > 0;
+  const pnlStr = (win?'+':'') + '£' + Math.abs(pnl).toFixed(2);
+
+  trades.push({ ticker, setup, entry, exit, shares, pnl, grade, time: timeNow() });
+
+  // Update stats
+  const wins     = trades.filter(t=>t.pnl>0).length;
+  const totalPnl = trades.reduce((s,t)=>s+t.pnl, 0);
+  document.getElementById('statTrades').textContent = trades.length;
+  document.getElementById('statWR').textContent = trades.length ? Math.round(wins/trades.length*100)+'%' : '—';
+  const pnlEl = document.getElementById('statPnl');
+  pnlEl.textContent = (totalPnl>=0?'+':'')+'£'+Math.abs(totalPnl).toFixed(2);
+  pnlEl.className = 'stat-val ' + (totalPnl>0?'green':totalPnl<0?'red':'white');
+
+  // Add to journal feed
+  const feed = document.getElementById('journalFeed');
+  const emptyState = feed.querySelector('.empty-state');
+  if (emptyState) emptyState.remove();
+
+  const gradeClass = grade==='A'?'grade-a':grade==='B'||grade==='C'?'grade-b':'grade-f';
+  const div = document.createElement('div');
+  div.className = 'journal-entry';
+  div.innerHTML = `
+    <div class="je-top">
+      <span class="je-ticker">${ticker}</span>
+      <span class="je-pnl ${win?'win':'loss'}">${pnlStr}</span>
+    </div>
+    <div class="je-details">
+      <span>Entry: $${entry.toFixed(2)}</span>
+      <span>Exit: $${exit.toFixed(2)}</span>
+      <span>${shares} shares</span>
+      <span>${timeNow()}</span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:2px">
+      <span class="je-setup">${setup||'—'}</span>
+      ${grade?`<span class="je-grade ${gradeClass}">GRADE ${grade}</span>`:''}
+    </div>`;
+  feed.insertBefore(div, feed.firstChild);
+
+  // Clear form
+  ['jTicker','jSetup','jEntry','jExit','jShares'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('jGrade').value='';
+
+  addAlertToFeed(ticker, win?'hod':'exit',
+    `Trade logged: ${pnlStr} | ${setup||'Manual entry'}`,
+    `Entry $${entry.toFixed(2)} → Exit $${exit.toFixed(2)} | ${shares} shares | Grade: ${grade||'—'}`);
+}
+
+// ═══════════════════════════════════════
+// SIMULATED DEMO ALERTS (while learning)
+// ═══════════════════════════════════════
+const demoAlerts = [
+  ['AAPL','apex','▲ APEX ENTRY detected','Break above $186.80 | Stop: $185.40 | Target: $189.60 | Check DOM in cTrader'],
+  ['TSLA','flag','🚩 BULL FLAG forming','Tight consolidation after surge | Watch for breakout above $244.50'],
+  ['GBPUSD','hod','HOD Momentum — near high of day','Day gain ≥1% on forex | Rel vol elevated | Above VWAP'],
+  ['AMZN','gap','📡 Pre-market gapper','Opening gap +7.3% vs close | Add to watchlist | Check news catalyst'],
+  ['EURUSD','rev','↕ Reversal signal — RSI extreme','RSI approaching oversold on 5M | Watch for red-to-green'],
+  ['NVDA','sqz','⚡ Squeeze Up detected','5% in 5 bars | Fast move — act quickly or miss it'],
+];
+let demoIdx = 0;
+function fireDemoAlert() {
+  if (watchlist.length === 0) return;
+  const [ticker, type, title, detail] = demoAlerts[demoIdx % demoAlerts.length];
+  // Only fire if ticker is on watchlist
+  if (watchlist.find(w => w.symbol === ticker)) {
+    addAlertToFeed(ticker, type, title, detail);
+  }
+  demoIdx++;
+}
+
+// ═══════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════
+function init() {
+  renderWatchlist();
+  if (watchlist.length) selectTicker(watchlist[0].symbol);
+
+  // Welcome alerts
+  setTimeout(()=>addAlertToFeed('SYSTEM','gap','Dashboard ready — Demo mode active','Add tickers to watchlist and load scanner Pine Scripts in TradingView. Alerts from TradingView webhooks will appear here.'), 800);
+
+  // Demo alerts every 45–90 seconds to simulate live market
+  setTimeout(()=>{ fireDemoAlert(); setInterval(fireDemoAlert, 60000 + Math.random()*30000); }, 5000);
+}
+
+// Wait for TV library to load
+if (typeof TradingView !== 'undefined') {
+  init();
+} else {
+  window.addEventListener('load', init);
+}
 </script>
+<script>
+const API_BASE = "https://rc-scanner-gjtm.onrender.com/api/scanner";  // Your API
+
+async function loadScanner() {
+  try {
+    const response = await fetch(`${API_BASE}/api/scanner`);
+    const data = await response.json();
+
+    // Show results
+    const watchlist = document.getElementById("watchlist");
+    watchlist.innerHTML = "";
+
+    data.scanner.forEach(stock => {
+      const div = document.createElement("div");
+      div.className = "ticker-item active";
+      div.innerHTML = `
+        <div class="ti-left">
+          <div class="ti-symbol">${stock.symbol}</div>
+          <div class="ti-name">Scanner Hit</div>
+        </div>
+        <div class="ti-right">
+          <div class="ti-price">$${stock.price}</div>
+          <div class="ti-change up">+${stock.day_gain}%</div>
+        </div>
+      `;
+      div.onclick = () => selectTicker(stock.symbol);
+      watchlist.appendChild(div);
+    });
+
+    // Update stats
+    document.getElementById("statAlerts").textContent = data.count;
+
+  } catch (e) {
+    console.error("API error:", e);
+  }
+}
+
+// Load every 30 seconds
+setInterval(loadScanner, 30000);
+loadScanner();  // Load now
+</script>
+
 </body>
 </html>
