@@ -6,8 +6,6 @@ from typing import List, Dict, Optional
 import pytz
 import requests
 import yfinance as yf
-from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.cron import CronTrigger
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
@@ -258,7 +256,7 @@ def scan_once():
                 passesgain = gain >= 10
                 passesvolume = relvol >= 5
                 score = round(min(gain / 30 * 25, 25) + min(relvol / 10 * 25, 25) + (25 if passesfloat else max(0, 25 - (floatshares - 20_000_000) / 2_000_000)) + min(len(news) / 3 * 25, 25), 1)
-                result = {'symbol': symbol, 'price': round(price, 2), 'daygain': round(gain, 2), 'relvolume': relvol, 'float': floatshares, 'floatm': round(floatshares / 1_000_000, 1), 'newscount': len(news), 'newsflag': passesnews, 'headlines': [n['title'] for n in news], 'newsurls': [n.get('url', '') for n in news], 'newssources': [n.get('source', '') for n in news], 'newsdates': [n.get('published', '') for n in news], 'passesprice': passesprice, 'passesgain': passesgain, 'passesvolume': passesvolume, 'passesfloat': passesfloat, 'passesnews': passesnews, 'score': score, 'allpass': passesprice and passesgain and passesvolume and passesfloat, 'scannedat': datetime.utcnow().isoformat(), 'source': 'EA2Y Scanner'}
+                result = {'symbol': symbol, 'price': round(price, 2), 'daygain': round(gain, 2), 'relvolume': relvol, 'float': floatshares, 'floatm': round(floatshares / 1_000_000, 1), 'newscount': len(news), 'newsflag': passesnews, 'headlines': [n['title'] for n in news], 'newsurls': [n.get('url', '') for n in news], 'newssources': [n.get('source', '') for n in news], 'newsdates': [n.get('published', '') for n in news], 'passesprice': passesprice, 'passesgain': passesgain, 'passesvolume': passesvolume, 'passesfloat': passesfloat, 'passesnews': passesnews, 'score': score, 'allpass': passesprice and passesgain and passesvolume and passesfloat, 'scanned_at': datetime.utcnow().isoformat(), 'source': 'EA2Y Scanner'}
                 results.append(result)
                 if score >= 70 and symbol not in ALERTED_TODAY:
                     send_telegram_alert(symbol, score, gain, relvol, price, floatshares, result['headlines'])
@@ -286,11 +284,7 @@ def scheduled_scan():
 
 @app.on_event('startup')
 def startup_event():
-    global SCHEDULER
-    if SCHEDULER is None:
-        SCHEDULER = BackgroundScheduler(timezone=LONDON, job_defaults={'coalesce': True, 'max_instances': 1, 'misfire_grace_time': 120})
-        SCHEDULER.add_job(scheduled_scan, CronTrigger(day_of_week='mon-fri', hour='8-20', minute='*/1'))
-        SCHEDULER.start()
+    pass
 
 
 @app.get('/health')
@@ -306,7 +300,7 @@ def manual_scan(req: ScanRequest = ScanRequest()):
 @app.get('/api/results')
 def results():
     try:
-        res = supabase.table('scanner_results').select('*').order('scannedat', desc=True).limit(200).execute()
+        res = supabase.table('scanner_results').select('*').order('scanned_at', desc=True).limit(200).execute()
         return {'results': res.data or [], 'count': len(res.data or []), 'last_run': STATE['last_run']}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
