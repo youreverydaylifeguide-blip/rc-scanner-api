@@ -71,19 +71,12 @@ def send_telegram_alert(symbol, score, gain, relvol, price, floatshares, headlin
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return
     try:
-        msg = (
-            f'EA2Y Scanner Hit
-'
-            f'{symbol} Score {score:.0f}/100
-'
-            f'Price {price:.2f} Day {gain:.1f}% RelVol {relvol:.1f}x Float {floatshares/1_000_000:.1f}M
-'
-            f"{headlines[0] if headlines else 'No news'}"
+        msg = "EA2Y Scanner Hit\n{} Score {:.0f}/100\nPrice {:.2f} Day {:.1f}% RelVol {:.1f}x Float {:.1f}M\n{}".format(
+            symbol, score, price, gain, relvol, floatshares / 1_000_000, headlines[0] if headlines else 'No news'
         )
         requests.post(f'https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage', json={'chat_id': TELEGRAM_CHAT_ID, 'text': msg}, timeout=5)
     except Exception:
         pass
-
 
 def get_float(symbol: str) -> Dict:
     cached = FLOAT_CACHE.get(symbol)
