@@ -1,3 +1,4 @@
+# EA2Y Scanner API v2.3 - Persistent Supabase News, Results, Watchlist, Journal
 import os
 import threading
 from datetime import datetime, timedelta, time as dtime
@@ -156,7 +157,7 @@ def finnhub_news(symbol: str) -> List[Dict]:
             return []
         items = []
         for a in r.json()[:3]:
-            items.append({'title': a.get('headline') or '', 'source': a.get('source') or 'Finnhub', 'published': datetime.utcfromtimestamp(a['datetime']).strftime('%Y-%m-%d') if a.get('datetime') else '', 'url': a.get('url') or ''})
+            items.append({'title': a.get('headline') or '', 'source': a.get('source') or 'Finnhub', 'published_at': datetime.utcfromtimestamp(a['datetime']).isoformat() if a.get('datetime') else '', 'url': a.get('url') or ''})
         return items
     except Exception:
         return []
@@ -174,7 +175,7 @@ def finviz_news(symbol: str) -> List[Dict]:
                 title = link.get_text(' ', strip=True) if link else cols[1].get_text(' ', strip=True)
                 href = link['href'] if link and link.get('href') else f'https://finviz.com/quote.ashx?t={symbol}'
                 date_txt = cols[0].get_text(' ', strip=True)
-                news.append({'title': title, 'source': 'Finviz', 'published': date_txt[:10], 'url': href})
+                news.append({'title': title, 'source': 'Finviz', 'published_at': date_txt[:10], 'url': href})
         return news[:3]
     except Exception:
         return []
@@ -198,8 +199,8 @@ def persist_news(symbol: str, items: List[Dict]):
             return
         rows = []
         for item in items:
-            rows.append({'symbol': symbol, 'title': item.get('title',''), 'source': item.get('source',''), 'published': item.get('published',''), 'url': item.get('url','')})
-        supabase.table('news_items').upsert(rows, on_conflict='symbol,title,url').execute()
+            rows.append({'symbol': symbol, 'title': item.get('title',''), 'source': item.get('source',''), 'published_at': item.get('published_at',''), 'url': item.get('url','')})
+        supabase.table('news_items').insert(rows).execute()
     except Exception:
         pass
 
