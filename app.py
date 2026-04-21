@@ -13,6 +13,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from supabase import create_client
+from apscheduler.schedulers.background import BackgroundScheduler
 
 load_dotenv()
 
@@ -37,7 +38,7 @@ STATE = {'last_run': None, 'running': False, 'last_error': None, 'last_count': 0
 FLOAT_CACHE: Dict[str, Dict] = {}
 ALERTED_TODAY = set()
 NEWS_CACHE: Dict[str, Dict] = {}
-SCHEDULER = None
+SCHEDULER = BackgroundScheduler(timezone='Europe/London')
 
 class WatchlistItem(BaseModel):
     symbol: str
@@ -285,12 +286,46 @@ def scheduled_scan():
 
 @app.on_event('startup')
 def startup_event():
-    pass
+    """
+    Runs once when Render boots the app.
+    Registers the 5-minute scan job and starts the scheduler.
+    This is why scheduler=false was appearing — the old version
+    had pass here and never actually started anything.
+    """
+    if not SCHEDULER.running:
+        SCHEDULER.add_job(
+            scheduled_scan,
+            'interval',
+            minutes=5,
+            id='main_scan',
+            replace_existing=True,
+        )
+        SCHEDULER.start()
+        print('✅ Scheduler started — scanning every 5 mins Mon–Fri 08:00–21:00 UK')
 
 
 @app.get('/health')
 def health():
-    return {'status': 'OK', 'version': '2.3', 'app': 'EA2Y Scanner API', 'scheduler': bool(SCHEDULER), 'running': STATE['running'], 'last_run': STATE['last_run'], 'last_error': STATE['last_error']}
+    next_run = None
+    try:
+        job = SCHEDULER.get_job('main_scan')
+        if job:
+            next_run = str(job.next_run_time)
+    except Exception:
+        pass
+    return {
+        'status':      'OK',
+        'version':     '2.3',
+        'app':         'EA2Y Scanner API',
+        'scheduler':   SCHEDULER.running,
+        'next_scan':   next_run,
+        'running':     STATE['running'],
+        'last_run':    STATE['last_run'],
+        'last_count':  STATE['last_count'],
+        'last_error':  STATE['last_error'],
+        'market_open': in_active_scan_window(),
+        'server_time': datetime.now(LONDON).strftime('%Y-%m-%d %H:%M:%S UK'),
+    }
 
 
 @app.post('/api/scan')
