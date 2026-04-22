@@ -207,19 +207,32 @@ def persist_news(symbol: str, items: List[Dict]):
 
 
 def get_finviz_gappers() -> List[str]:
+    """
+    Scan for Ross Cameron momentum candidates.
+    Filters:
+      sh_price_o1     = price OVER $1
+      sh_price_u20    = price UNDER $20
+      ta_change_o4    = day change OVER 4%  (was wrongly 'u5' = under 5%)
+      ta_volm_o2      = relative volume OVER 2x (pre-filter before Yahoo validates 5x)
+    Sorted by largest % gainers first (o=-change).
+    """
     try:
-        r = requests.get('https://finviz.com/screener.ashx?v=111&f=sh_price_u2,ta_volm_o1,ta_change_u5', headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
+        url = ('https://finviz.com/screener.ashx'
+               '?v=111&f=sh_price_o1,sh_price_u20,ta_change_o4,ta_volm_o2&o=-change')
+        r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}, timeout=10)
         soup = BeautifulSoup(r.text, 'html.parser')
         tickers = []
         for row in soup.select('table.screener_table tr'):
             cells = row.find_all('td')
             if len(cells) > 1:
                 sym = cells[1].get_text(strip=True)
-                if sym.isalpha() and len(sym) <= 5:
+                if sym and sym.isalpha() and len(sym) <= 5:
                     tickers.append(sym.upper())
-        return tickers[:15] or ['SMCI', 'NVDA', 'TSLA']
-    except Exception:
-        return ['SMCI', 'NVDA', 'TSLA']
+        print(f'📡 Finviz returned {len(tickers)} tickers: {tickers[:10]}')
+        return tickers[:20] or ['SMCI', 'MU', 'VRT']
+    except Exception as e:
+        print(f'⚠️ Finviz screener error: {e}')
+        return ['SMCI', 'MU', 'VRT']
 
 
 def persist_scan_results(rows: List[Dict]):
@@ -237,6 +250,7 @@ def scan_once():
     STATE['running'] = True
     try:
         tickers = get_finviz_gappers()
+        print(f'🔍 Scanning {len(tickers)} tickers...')
         news_map = get_news_for_symbols(tickers)
         results = []
         telegram_sent = 0
@@ -245,6 +259,7 @@ def scan_once():
                 stock = yf.Ticker(symbol)
                 hist = stock.history(period='2d')
                 if len(hist) < 2:
+                    print(f'  ⏭ {symbol}: insufficient history')
                     continue
                 price = float(hist['Close'].iloc[-1])
                 prev = float(hist['Close'].iloc[-2])
@@ -254,22 +269,43 @@ def scan_once():
                 news = news_map.get(symbol.upper(), [])
                 passesfloat = floatshares < 20_000_000
                 passesnews = len(news) >= 1
-                passesprice = 2 <= price <= 20
-                passesgain = gain >= 10
+                passesprice = 1 <= price <= 20    # fixed: was 2<=price, now 1<=price
+                passesgain = gain >= 4.0           # fixed: was >=10, now >=4 (Ross min)
                 passesvolume = relvol >= 5
                 score = round(min(gain / 30 * 25, 25) + min(relvol / 10 * 25, 25) + (25 if passesfloat else max(0, 25 - (floatshares - 20_000_000) / 2_000_000)) + min(len(news) / 3 * 25, 25), 1)
-                result = {'symbol': symbol, 'price': round(price, 2), 'daygain': round(gain, 2), 'relvolume': relvol, 'float': floatshares, 'floatm': round(floatshares / 1_000_000, 1), 'newscount': len(news), 'newsflag': passesnews, 'headlines': [n['title'] for n in news], 'newsurls': [n.get('url', '') for n in news], 'newssources': [n.get('source', '') for n in news], 'newsdates': [n.get('published', '') for n in news], 'passesprice': passesprice, 'passesgain': passesgain, 'passesvolume': passesvolume, 'passesfloat': passesfloat, 'passesnews': passesnews, 'score': score, 'allpass': passesprice and passesgain and passesvolume and passesfloat, 'scanned_at': datetime.utcnow().isoformat(), 'source': 'EA2Y Scanner'}
+                print(f'  {"✅" if passesprice and passesgain else "❌"} {symbol}: ${price:.2f} +{gain:.1f}% vol={relvol:.1f}x float={floatshares/1e6:.0f}M score={score}')
+                result = {
+                    'symbol': symbol, 'price': round(price, 2), 'daygain': round(gain, 2),
+                    'relvolume': relvol, 'float': floatshares, 'floatm': round(floatshares / 1_000_000, 1),
+                    'newscount': len(news), 'newsflag': passesnews,
+                    'headlines': [n['title'] for n in news],
+                    'newsurls':  [n.get('url', '') for n in news],
+                    'newssources': [n.get('source', '') for n in news],
+                    'newsdates': [n.get('published', n.get('published_at', '')) for n in news],
+                    'passesprice': passesprice, 'passesgain': passesgain,
+                    'passesvolume': passesvolume, 'passesfloat': passesfloat, 'passesnews': passesnews,
+                    'score': score, 'allpass': passesprice and passesgain and passesvolume and passesfloat,
+                    'scanned_at': datetime.utcnow().isoformat(), 'source': 'RC Scanner v3',
+                }
                 results.append(result)
                 if score >= 70 and symbol not in ALERTED_TODAY:
                     send_telegram_alert(symbol, score, gain, relvol, price, floatshares, result['headlines'])
                     ALERTED_TODAY.add(symbol)
                     telegram_sent += 1
             except Exception as e:
-                results.append({'symbol': symbol, 'error': str(e)})
+                print(f'  ⚠️ {symbol} error: {e}')
+                results.append({'symbol': symbol, 'error': str(e), 'score': 0})
         results.sort(key=lambda x: x.get('score', 0), reverse=True)
         persist_scan_results(results)
         STATE.update({'last_run': started.isoformat(), 'last_error': None, 'last_count': len(results)})
-        return {'count': len(results), 'telegramsent': telegram_sent, 'timestamp': started.isoformat(), 'results': results}
+        print(f'✅ Scan complete: {len(results)} results stored')
+        return {
+            'count':        len(results),
+            'scanner':      results,   # dashboard reads 'scanner' key
+            'results':      results,   # compatibility alias
+            'telegramsent': telegram_sent,
+            'timestamp':    started.isoformat(),
+        }
     except Exception as e:
         STATE['last_error'] = str(e)
         raise
@@ -333,13 +369,39 @@ def manual_scan(req: ScanRequest = ScanRequest()):
     return scan_once()
 
 
+@app.get('/api/scanner')
+def scanner_get():
+    """
+    GET /api/scanner — triggers a fresh scan.
+    Dashboard ↻ Scan button calls this.
+    Previously missing — caused 404 errors.
+    """
+    return scan_once()
+
+
 @app.get('/api/results')
 def results():
+    """
+    Read latest stored results from Supabase without triggering a scan.
+    Returns both 'scanner' and 'results' keys so dashboard always finds data.
+    Ordered by score descending so best candidates appear first.
+    """
     try:
-        res = supabase.table('scanner_results').select('*').order('scanned_at', desc=True).limit(200).execute()
-        return {'results': res.data or [], 'count': len(res.data or []), 'last_run': STATE['last_run']}
+        res = supabase.table('scanner_results') \
+            .select('*') \
+            .order('score', desc=True) \
+            .limit(50) \
+            .execute()
+        data = res.data or []
+        return {
+            'scanner':  data,   # primary key read by dashboard
+            'results':  data,   # compatibility alias
+            'count':    len(data),
+            'last_run': STATE['last_run'],
+        }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f'⚠️ /api/results error: {e}')
+        return {'scanner': [], 'results': [], 'count': 0, 'last_run': None}
 
 
 @app.get('/api/news')
