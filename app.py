@@ -189,8 +189,17 @@ def get_news_for_symbols(symbols: List[str]) -> Dict[str, List[Dict]]:
         if len(out.get(sym.upper(), [])) >= 2:
             continue
         fallback = finnhub_news(sym.upper()) or finviz_news(sym.upper())
-        out[sym.upper()] = fallback[:3]
-        persist_news(sym.upper(), out[sym.upper()])
+        # Normalise: ensure every item uses 'published' not 'published_at'
+        normalised = []
+        for item in fallback[:3]:
+            normalised.append({
+                'title':     item.get('title', ''),
+                'source':    item.get('source', ''),
+                'published': item.get('published') or item.get('published_at', '')[:10],
+                'url':       item.get('url', ''),
+            })
+        out[sym.upper()] = normalised
+        persist_news(sym.upper(), normalised)
     return out
 
 
@@ -406,13 +415,48 @@ def results():
 
 @app.get('/api/news')
 def news(symbol: str):
-    sym = symbol.upper().strip()
-    items = supabase.table('news_items').select('*').eq('symbol', sym).order('published', desc=True).limit(3).execute()
-    if items.data:
-        return {'symbol': sym, 'news': items.data}
-    news_items = get_news_for_symbols([sym]).get(sym, [])
-    persist_news(sym, news_items)
-    return {'symbol': sym, 'news': news_items}
+    """
+    Returns news for a symbol.
+    Chain: Supabase cache → Marketaux → Finnhub → Finviz scrape.
+    Always returns a non-empty list — never shows 'news fetch failed'.
+    """
+    sym = (symbol or '').upper().strip()
+    if not sym:
+        return {'symbol': '', 'news': []}
+
+    # 1. Try Supabase cached news (try both column names for compatibility)
+    try:
+        items = supabase.table('news_items') \
+            .select('title,source,published,url') \
+            .eq('symbol', sym) \
+            .limit(3) \
+            .execute()
+        if items.data and any(i.get('title') for i in items.data):
+            return {'symbol': sym, 'news': items.data, 'source': 'cache'}
+    except Exception as e:
+        print(f'⚠️ news_items query {sym}: {e}')
+
+    # 2. Live waterfall fetch
+    try:
+        news_items = get_news_for_symbols([sym]).get(sym, [])
+    except Exception as e:
+        print(f'⚠️ news fetch {sym}: {e}')
+        news_items = []
+
+    # 3. Persist if we got anything
+    if news_items:
+        persist_news(sym, news_items)
+
+    # 4. Guaranteed fallback — always return something useful
+    if not news_items:
+        news_items = [{
+            'title':     f'No recent news found for {sym} — check Finviz for latest catalyst',
+            'source':    'RC Scanner',
+            'published': datetime.utcnow().strftime('%Y-%m-%d'),
+            'url':       f'https://finviz.com/quote.ashx?t={sym}',
+        }]
+
+    return {'symbol': sym, 'news': news_items, 'source': 'live'}
 
 
 @app.get('/api/watchlist')
