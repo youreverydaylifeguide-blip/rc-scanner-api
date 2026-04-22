@@ -217,27 +217,46 @@ def persist_news(symbol: str, items: List[Dict]):
 
 def get_finviz_gappers() -> List[str]:
     """
-    Scan for Ross Cameron momentum candidates.
+    Scan for Ross Cameron momentum candidates on major US exchanges only.
     Filters:
+      exch_nasd       = NASDAQ listed stocks only (major exchange)
+      exch_nysemkt    = NYSE listed stocks
+      exch_amex       = AMEX listed stocks
       sh_price_o1     = price OVER $1
       sh_price_u20    = price UNDER $20
-      ta_change_o4    = day change OVER 4%  (was wrongly 'u5' = under 5%)
-      ta_volm_o2      = relative volume OVER 2x (pre-filter before Yahoo validates 5x)
-    Sorted by largest % gainers first (o=-change).
+      ta_change_o4    = day change OVER 4%
+      ta_volm_o2      = relative volume OVER 2x (Yahoo validates 5x later)
+      sh_avgvol_o100  = avg daily volume over 100k (liquid stocks only)
+    Sorted by largest % gainers first.
+
+    Exchange filter is CRITICAL — without it Finviz returns OTC/pink sheet
+    micro-caps that have no Yahoo Finance data and cause 'possibly delisted' errors.
     """
     try:
-        url = ('https://finviz.com/screener.ashx'
-               '?v=111&f=sh_price_o1,sh_price_u20,ta_change_o4,ta_volm_o2&o=-change')
-        r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}, timeout=10)
+        url = (
+            'https://finviz.com/screener.ashx'
+            '?v=111'
+            '&f=exch_nasd,exch_nysemkt,exch_amex'
+            ',sh_price_o1,sh_price_u20'
+            ',ta_change_o4'
+            ',ta_volm_o2'
+            ',sh_avgvol_o100'
+            '&o=-change'
+        )
+        r = requests.get(
+            url,
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'},
+            timeout=10,
+        )
         soup = BeautifulSoup(r.text, 'html.parser')
         tickers = []
         for row in soup.select('table.screener_table tr'):
             cells = row.find_all('td')
             if len(cells) > 1:
                 sym = cells[1].get_text(strip=True)
-                if sym and sym.isalpha() and len(sym) <= 5:
+                if sym and sym.isalpha() and 1 <= len(sym) <= 5:
                     tickers.append(sym.upper())
-        print(f'📡 Finviz returned {len(tickers)} tickers: {tickers[:10]}')
+        print(f'📡 Finviz returned {len(tickers)} exchange-listed tickers: {tickers[:10]}')
         return tickers[:20] or ['SMCI', 'MU', 'VRT']
     except Exception as e:
         print(f'⚠️ Finviz screener error: {e}')
