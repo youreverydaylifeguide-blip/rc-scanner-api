@@ -261,6 +261,11 @@ async def scanner():
     results.sort(key=lambda x: x['score'], reverse=True)
     return {"scanner": results, "count": len(results), "telegram_sent": telegram_sent, "source": "Finviz + Yahoo + Marketaux", "timestamp": str(datetime.now())}
 
+@app.get("/api/results")
+async def results_legacy():
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/api/scanner")
+
 # ─────────────────────────────────────────────
 # FIXED NEWS ENDPOINT (Supabase column name)
 # ─────────────────────────────────────────────
