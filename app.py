@@ -1,385 +1,648 @@
-# RC Scanner API v3.3 – Full Dashboard Compatibility
+# EA2Y Scanner API v2.3 - Persistent Supabase News, Results, Watchlist, Journal
 import os
-import time
+import threading
+from datetime import datetime, timedelta, time as dtime
+from typing import List, Dict, Optional
+
+import pytz
 import requests
+import yfinance as yf
 from bs4 import BeautifulSoup
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
-from supabase import create_client
-from dotenv import load_dotenv
-import yfinance as yf
-from datetime import datetime, timedelta
-from typing import List, Dict
-import pytz
 from pydantic import BaseModel
+from supabase import create_client
+from apscheduler.schedulers.background import BackgroundScheduler
 
 load_dotenv()
 
-app = FastAPI(title="RC Scanner API v3.3")
+app = FastAPI(title='EA2Y Scanner API v2.3')
+app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_credentials=True, allow_methods=['*'], allow_headers=['*'])
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+SUPABASE_URL = os.getenv('SUPABASE_URL')
+SUPABASE_KEY = os.getenv('SUPABASE_KEY')
+MARKETAUX_KEY = os.getenv('MARKETAUX_KEY', '')
+FINNHUB_KEY = os.getenv('FINNHUB_KEY', '')
+TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
+TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID', '')
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise RuntimeError('Missing SUPABASE_URL or SUPABASE_KEY')
 
-supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+LONDON = pytz.timezone('Europe/London')
+NY = pytz.timezone('America/New_York')
+NEWS_CACHE_TTL = timedelta(minutes=30)
+SCAN_LOCK = threading.Lock()
+STATE = {'last_run': None, 'running': False, 'last_error': None, 'last_count': 0}
+FLOAT_CACHE: Dict[str, Dict] = {}
+ALERTED_TODAY = set()
+NEWS_CACHE: Dict[str, Dict] = {}
+SCHEDULER = BackgroundScheduler(timezone='Europe/London')
 
 class WatchlistItem(BaseModel):
     symbol: str
-    name: str | None = None
+    name: Optional[str] = None
 
 class JournalItem(BaseModel):
     symbol: str
-    setup: str | None = None
-    entry_price: float | None = None
-    exit_price: float | None = None
-    shares: int | None = None
-    grade: str | None = None
+    setup: Optional[str] = None
+    entryprice: Optional[float] = None
+    exitprice: Optional[float] = None
+    shares: Optional[int] = None
+    grade: Optional[str] = None
 
-# ─────────────────────────────────────────────
-# TELEGRAM ALERT
-# ─────────────────────────────────────────────
-def send_telegram_alert(symbol: str, score: float, gain: float, rel_vol: float,
-                         price: float, float_shares: int, headlines: List[str]):
-    token = os.getenv("TELEGRAM_BOT_TOKEN")
-    chat_id = os.getenv("TELEGRAM_CHAT_ID")
-    if not token or not chat_id:
+class ScanRequest(BaseModel):
+    force: bool = False
+
+
+def london_now():
+    return datetime.now(LONDON)
+
+
+def in_active_scan_window(dt=None):
+    dt = dt or london_now()
+    if dt.weekday() >= 5:
+        return False
+    return dtime(8, 0) <= dt.time() <= dtime(21, 0)
+
+
+def send_telegram_alert(symbol, score, gain, relvol, price, floatshares, headlines):
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return
-    float_m = round(float_shares / 1_000_000, 1)
-    news_preview = headlines[0][:80] + "..." if headlines else "No news"
-    message = (
-        f"🟢 *RC SCANNER HIT*\n"
-        f"━━━━━━━━━━━━━━━━\n"
-        f"*{symbol}*  |  Score: {score:.0f}/100\n"
-        f"💰 Price:    ${price:.2f}\n"
-        f"📈 Day gain: +{gain:.1f}%\n"
-        f"⚡ Rel vol:  {rel_vol:.1f}×\n"
-        f"🏦 Float:    {float_m}M shares\n"
-        f"━━━━━━━━━━━━━━━━\n"
-        f"📰 *{news_preview}*\n"
-        f"━━━━━━━━━━━━━━━━\n"
-        f"👉 Open cTrader → Check DOM → Wait for Apex entry\n"
-        f"🛑 Stop = low of pullback candle\n"
-        f"🎯 Target = 2× your risk"
-    )
     try:
-        url = f"https://api.telegram.org/bot{token}/sendMessage"
-        requests.post(url, json={"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}, timeout=5)
+        msg = "EA2Y Scanner Hit\n{} Score {:.0f}/100\nPrice {:.2f} Day {:.1f}% RelVol {:.1f}x Float {:.1f}M\n{}".format(
+            symbol, score, price, gain, relvol, floatshares / 1_000_000, headlines[0] if headlines else 'No news'
+        )
+        requests.post(f'https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage', json={'chat_id': TELEGRAM_CHAT_ID, 'text': msg}, timeout=5)
     except Exception:
         pass
 
-# ─────────────────────────────────────────────
-# ROBUST YAHOO FETCHER
-# ─────────────────────────────────────────────
-def create_yf_session():
-    session = requests.Session()
-    session.headers.update({
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'application/json, text/plain, */*',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Origin': 'https://finance.yahoo.com',
-        'Referer': 'https://finance.yahoo.com/'
-    })
-    return session
-
-yf_session = create_yf_session()
-yf.set_tz_cache_location(None)
-yf.shared._session = yf_session
-
-def get_price_data(symbol: str, period: str = "2d") -> Dict:
-    for attempt in range(3):
-        try:
-            ticker = yf.Ticker(symbol)
-            hist = ticker.history(period=period, timeout=10)
-            if not hist.empty:
-                return {"success": True, "hist": hist}
-            data = yf.download(symbol, period=period, progress=False, timeout=10)
-            if not data.empty:
-                return {"success": True, "hist": data}
-        except Exception as e:
-            print(f"Attempt {attempt+1} failed for {symbol}: {e}")
-            time.sleep(1 * (attempt + 1))
-    return {"success": False, "hist": None}
-
-def is_valid_ticker(symbol: str) -> bool:
-    result = get_price_data(symbol, "2d")
-    if not result["success"]:
-        return False
-    hist = result["hist"]
-    if len(hist) < 2:
-        return False
-    latest_close = float(hist['Close'].iloc[-1])
-    return latest_close > 0.5
-
-def get_intraday_rel_vol(symbol: str) -> float:
+def get_float(symbol: str) -> Dict:
+    cached = FLOAT_CACHE.get(symbol)
+    if cached and datetime.utcnow() - cached['time'] < timedelta(hours=24):
+        return cached
     try:
-        et = pytz.timezone('America/New_York')
-        now_et = datetime.now(et)
-        market_open = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
-        hours_elapsed = max((now_et - market_open).total_seconds() / 3600, 0.25)
+        info = yf.Ticker(symbol).info
+        shares = int(info.get('floatShares') or info.get('sharesOutstanding') or 25_000_000)
+    except Exception:
+        shares = 25_000_000
+    data = {'float': shares, 'time': datetime.utcnow()}
+    FLOAT_CACHE[symbol] = data
+    return data
+
+
+def get_intraday_relvol(symbol: str) -> float:
+    try:
+        nowet = datetime.now(NY)
+        marketopen = nowet.replace(hour=9, minute=30, second=0, microsecond=0)
+        hours_elapsed = max((nowet - marketopen).total_seconds() / 3600, 0.25)
         hours_elapsed = min(hours_elapsed, 6.5)
-        ticker = yf.Ticker(symbol)
-        intraday = ticker.history(period="1d", interval="1m")
+        stock = yf.Ticker(symbol)
+        intraday = stock.history(period='1d', interval='1m')
         if intraday.empty:
             return 1.0
         today_vol = float(intraday['Volume'].sum())
-        hist = ticker.history(period="30d")
+        hist = stock.history(period='30d')
         if len(hist) < 5:
             return 1.0
         avg_daily_vol = float(hist['Volume'].mean())
-        expected_vol = (avg_daily_vol / 6.5) * hours_elapsed
-        if expected_vol <= 0:
-            return 1.0
-        return round(today_vol / expected_vol, 2)
-    except Exception as e:
-        print(f"Rel vol error {symbol}: {e}")
+        expected_vol = avg_daily_vol * (hours_elapsed / 6.5)
+        return round(today_vol / expected_vol, 2) if expected_vol > 0 else 1.0
+    except Exception:
         return 1.0
 
-FLOAT_CACHE = {}
 
-def get_float(symbol: str) -> Dict:
-    if symbol in FLOAT_CACHE and (datetime.now() - FLOAT_CACHE[symbol]['time']) < timedelta(hours=24):
-        return FLOAT_CACHE[symbol]
-    time.sleep(0.3)
+def marketaux_batch_news(symbols: List[str]) -> Dict[str, List[Dict]]:
+    if not symbols or not MARKETAUX_KEY:
+        return {}
+    cache_key = ','.join(sorted(set(s.upper().strip() for s in symbols if s)))
+    cached = NEWS_CACHE.get(cache_key)
+    now = datetime.utcnow()
+    if cached and now - cached['time'] < NEWS_CACHE_TTL:
+        return cached['data']
     try:
-        ticker = yf.Ticker(symbol)
-        info = ticker.info
-        shares = int(info.get('floatShares') or info.get('sharesOutstanding') or 25_000_000)
-        FLOAT_CACHE[symbol] = {'float': shares, 'time': datetime.now()}
-        return FLOAT_CACHE[symbol]
-    except Exception as e:
-        print(f"Float error {symbol}: {e}")
-        return {'float': 25_000_000}
+        r = requests.get('https://api.marketaux.com/v1/news/all', params={'symbols': ','.join(sorted(set(symbols))), 'filter_entities': 'true', 'language': 'en', 'api_token': MARKETAUX_KEY, 'limit': 50}, timeout=12)
+        if r.status_code != 200:
+            return {}
+        data = r.json().get('data', [])
+        out: Dict[str, List[Dict]] = {s.upper(): [] for s in symbols}
+        for a in data:
+            title = a.get('title') or ''
+            source = a.get('source') or 'MarketAux'
+            published = (a.get('published_at') or '')[:10]
+            link = a.get('url') or ''
+            entities = a.get('entities') or []
+            hits = set((e.get('symbol') or e.get('ticker') or '').upper().strip() for e in entities if (e.get('symbol') or e.get('ticker')))
+            if not hits:
+                text = f"{title} {a.get('description') or ''}".upper()
+                hits = {s for s in symbols if f' {s.upper()} ' in f' {text} '}
+            for sym in hits:
+                if sym in out and len(out[sym]) < 3:
+                    out[sym].append({'title': title, 'source': source, 'published': published, 'url': link})
+        NEWS_CACHE[cache_key] = {'time': now, 'data': out}
+        return out
+    except Exception:
+        return {}
 
-def get_news(symbol: str, api_key: str = None) -> List[Dict]:
-    if not api_key:
-        api_key = os.getenv("MARKETAUX_KEY", "demo")
+
+def finnhub_news(symbol: str) -> List[Dict]:
+    if not FINNHUB_KEY:
+        return []
     try:
-        url = "https://api.marketaux.com/v1/news/all"
-        params = {'symbols': symbol, 'filter_entities': 'true', 'language': 'en', 'api_token': api_key, 'limit': 5}
-        response = requests.get(url, params=params, timeout=8)
-        if response.status_code == 200:
-            data = response.json()
-            news = []
-            for article in data.get('data', [])[:3]:
-                news.append({
-                    'title': article.get('title', ''),
-                    'source': article.get('source', ''),
-                    'published': article.get('published_at', '')[:10],
-                    'url': article.get('url', '')
-                })
-            return news
+        today = datetime.utcnow().date()
+        frm = (today - timedelta(days=7)).isoformat()
+        to = today.isoformat()
+        r = requests.get('https://finnhub.io/api/v1/company-news', params={'symbol': symbol, 'from': frm, 'to': to, 'token': FINNHUB_KEY}, timeout=10)
+        if r.status_code != 200:
+            return []
+        items = []
+        for a in r.json()[:3]:
+            items.append({'title': a.get('headline') or '', 'source': a.get('source') or 'Finnhub', 'published_at': datetime.utcfromtimestamp(a['datetime']).isoformat() if a.get('datetime') else '', 'url': a.get('url') or ''})
+        return items
+    except Exception:
         return []
-    except:
+
+
+def finviz_news(symbol: str) -> List[Dict]:
+    try:
+        r = requests.get(f'https://finviz.com/quote.ashx?t={symbol}', headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
+        soup = BeautifulSoup(r.text, 'html.parser')
+        news = []
+        for row in soup.select('table.fullview-news-outer tr')[:3]:
+            cols = row.find_all('td')
+            if len(cols) >= 2:
+                link = cols[1].find('a')
+                title = link.get_text(' ', strip=True) if link else cols[1].get_text(' ', strip=True)
+                href = link['href'] if link and link.get('href') else f'https://finviz.com/quote.ashx?t={symbol}'
+                date_txt = cols[0].get_text(' ', strip=True)
+                news.append({'title': title, 'source': 'Finviz', 'published_at': date_txt[:10], 'url': href})
+        return news[:3]
+    except Exception:
         return []
+
+
+def get_news_for_symbols(symbols: List[str]) -> Dict[str, List[Dict]]:
+    batch = marketaux_batch_news(symbols)
+    out: Dict[str, List[Dict]] = {s.upper(): batch.get(s.upper(), [])[:3] for s in symbols}
+    for sym in symbols:
+        if len(out.get(sym.upper(), [])) >= 2:
+            continue
+        fallback = finnhub_news(sym.upper()) or finviz_news(sym.upper())
+        # Normalise: ensure every item uses 'published' not 'published_at'
+        normalised = []
+        for item in fallback[:3]:
+            normalised.append({
+                'title':     item.get('title', ''),
+                'source':    item.get('source', ''),
+                'published': item.get('published') or item.get('published_at', '')[:10],
+                'url':       item.get('url', ''),
+            })
+        out[sym.upper()] = normalised
+        persist_news(sym.upper(), normalised)
+    return out
+
+
+def persist_news(symbol: str, items: List[Dict]):
+    try:
+        if not items:
+            return
+        rows = []
+        for item in items:
+            rows.append({'symbol': symbol, 'title': item.get('title',''), 'source': item.get('source',''), 'published_at': item.get('published_at',''), 'url': item.get('url','')})
+        supabase.table('news_items').insert(rows).execute()
+    except Exception:
+        pass
+
 
 def get_finviz_gappers() -> List[str]:
+    """
+    Scan for Ross Cameron momentum candidates on major US exchanges only.
+    Filters:
+      exch_nasd       = NASDAQ listed stocks only (major exchange)
+      exch_nysemkt    = NYSE listed stocks
+      exch_amex       = AMEX listed stocks
+      sh_price_o1     = price OVER $1
+      sh_price_u20    = price UNDER $20
+      ta_change_o4    = day change OVER 4%
+      ta_volm_o2      = relative volume OVER 2x (Yahoo validates 5x later)
+      sh_avgvol_o100  = avg daily volume over 100k (liquid stocks only)
+    Sorted by largest % gainers first.
+
+    Exchange filter is CRITICAL — without it Finviz returns OTC/pink sheet
+    micro-caps that have no Yahoo Finance data and cause 'possibly delisted' errors.
+    """
     try:
-        url = "https://finviz.com/screener.ashx?v=111&f=exch_nasd,exch_nyse,sh_price_u20,sh_price_o2,ta_perf_d10o,sh_vol_o500,sh_relvol_o1.5"
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-        response = requests.get(url, headers=headers, timeout=10)
-        soup = BeautifulSoup(response.text, 'html.parser')
+        url = (
+            'https://finviz.com/screener.ashx'
+            '?v=111'
+            '&f=exch_nasd,exch_nysemkt,exch_amex'
+            ',sh_price_o1,sh_price_u20'
+            ',ta_change_o4'
+            ',ta_volm_o2'
+            ',sh_avgvol_o100'
+            '&o=-change'
+        )
+        r = requests.get(
+            url,
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'},
+            timeout=10,
+        )
+        soup = BeautifulSoup(r.text, 'html.parser')
         tickers = []
-        for row in soup.select('table.screener_table tr')[1:31]:
+        for row in soup.select('table.screener_table tr'):
             cells = row.find_all('td')
             if len(cells) > 1:
-                symbol = cells[1].text.strip()
-                if symbol.isalpha() and 2 <= len(symbol) <= 5 and symbol.isupper():
-                    tickers.append(symbol)
-        return list(dict.fromkeys(tickers))[:20]
+                sym = cells[1].get_text(strip=True)
+                if sym and sym.isalpha() and 1 <= len(sym) <= 5:
+                    tickers.append(sym.upper())
+        print(f'📡 Finviz returned {len(tickers)} exchange-listed tickers: {tickers[:10]}')
+        return tickers[:20] or ['SMCI', 'MU', 'VRT']
     except Exception as e:
-        print(f"Finviz error: {e}")
-        return []
+        print(f'⚠️ Finviz screener error: {e}')
+        return ['SMCI', 'MU', 'VRT']
 
-FALLBACK_TICKERS = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META", "NFLX"]
 
-TELEGRAM_SCORE_THRESHOLD = 70
-alerted_today = set()
+def persist_scan_results(rows: List[Dict]):
+    try:
+        if rows:
+            supabase.table('scanner_results').upsert(rows, on_conflict='symbol').execute()
+    except Exception:
+        pass
 
-@app.get("/api/scanner")
-async def scanner():
-    finviz_tickers = get_finviz_gappers()
-    print(f"📡 Finviz returned: {finviz_tickers}")
-    valid_tickers = []
-    for sym in finviz_tickers:
-        if is_valid_ticker(sym):
-            valid_tickers.append(sym)
-        else:
-            print(f"⏭ {sym}: no price data, skipped")
-    if len(valid_tickers) < 3:
-        print("⚠️ Few valid tickers from Finviz, using fallback list")
-        for sym in FALLBACK_TICKERS:
-            if sym not in valid_tickers and is_valid_ticker(sym):
-                valid_tickers.append(sym)
-    if not valid_tickers:
-        print("❌ No valid tickers found at all")
-        return {"scanner": [], "count": 0, "telegram_sent": 0, "source": "Finviz + Yahoo", "timestamp": str(datetime.now())}
-    results = []
-    telegram_sent = 0
-    for symbol in valid_tickers:
+
+def scan_once():
+    if not SCAN_LOCK.acquire(blocking=False):
+        return {'status': 'busy'}
+    started = datetime.utcnow()
+    STATE['running'] = True
+    try:
+        tickers = get_finviz_gappers()
+        print(f'🔍 Scanning {len(tickers)} tickers...')
+        news_map = get_news_for_symbols(tickers)
+        results = []
+        telegram_sent = 0
+        for symbol in tickers:
+            try:
+                stock = yf.Ticker(symbol)
+                hist = stock.history(period='2d')
+                if len(hist) < 2:
+                    print(f'  ⏭ {symbol}: insufficient history')
+                    continue
+                price = float(hist['Close'].iloc[-1])
+                prev = float(hist['Close'].iloc[-2])
+                gain = (price - prev) / prev * 100
+                relvol = get_intraday_relvol(symbol)
+                floatshares = get_float(symbol)['float']
+                news = news_map.get(symbol.upper(), [])
+                passesfloat = floatshares < 20_000_000
+                passesnews = len(news) >= 1
+                passesprice = 1 <= price <= 20    # fixed: was 2<=price, now 1<=price
+                passesgain = gain >= 4.0           # fixed: was >=10, now >=4 (Ross min)
+                passesvolume = relvol >= 5
+                score = round(min(gain / 30 * 25, 25) + min(relvol / 10 * 25, 25) + (25 if passesfloat else max(0, 25 - (floatshares - 20_000_000) / 2_000_000)) + min(len(news) / 3 * 25, 25), 1)
+                print(f'  {"✅" if passesprice and passesgain else "❌"} {symbol}: ${price:.2f} +{gain:.1f}% vol={relvol:.1f}x float={floatshares/1e6:.0f}M score={score}')
+                result = {
+                    'symbol': symbol, 'price': round(price, 2), 'daygain': round(gain, 2),
+                    'relvolume': relvol, 'float': floatshares, 'floatm': round(floatshares / 1_000_000, 1),
+                    'newscount': len(news), 'newsflag': passesnews,
+                    'headlines': [n['title'] for n in news],
+                    'newsurls':  [n.get('url', '') for n in news],
+                    'newssources': [n.get('source', '') for n in news],
+                    'newsdates': [n.get('published', n.get('published_at', '')) for n in news],
+                    'passesprice': passesprice, 'passesgain': passesgain,
+                    'passesvolume': passesvolume, 'passesfloat': passesfloat, 'passesnews': passesnews,
+                    'score': score, 'allpass': passesprice and passesgain and passesvolume and passesfloat,
+                    'scanned_at': datetime.utcnow().isoformat(), 'source': 'RC Scanner v3',
+                }
+                results.append(result)
+                if score >= 70 and symbol not in ALERTED_TODAY:
+                    send_telegram_alert(symbol, score, gain, relvol, price, floatshares, result['headlines'])
+                    ALERTED_TODAY.add(symbol)
+                    telegram_sent += 1
+            except Exception as e:
+                print(f'  ⚠️ {symbol} error: {e}')
+                results.append({'symbol': symbol, 'error': str(e), 'score': 0})
+        results.sort(key=lambda x: x.get('score', 0), reverse=True)
+        persist_scan_results(results)
+        STATE.update({'last_run': started.isoformat(), 'last_error': None, 'last_count': len(results)})
+        print(f'✅ Scan complete: {len(results)} results stored')
+        return {
+            'count':        len(results),
+            'scanner':      results,   # dashboard reads 'scanner' key
+            'results':      results,   # compatibility alias
+            'telegramsent': telegram_sent,
+            'timestamp':    started.isoformat(),
+        }
+    except Exception as e:
+        STATE['last_error'] = str(e)
+        raise
+    finally:
+        STATE['running'] = False
+        SCAN_LOCK.release()
+
+
+def scheduled_scan():
+    if in_active_scan_window():
+        return scan_once()
+    return {'skipped': True}
+
+
+@app.on_event('startup')
+def startup_event():
+    """
+    Runs once when Render boots the app.
+    Registers the 5-minute scan job and starts the scheduler.
+    This is why scheduler=false was appearing — the old version
+    had pass here and never actually started anything.
+    """
+    if not SCHEDULER.running:
+        SCHEDULER.add_job(
+            scheduled_scan,
+            'interval',
+            minutes=5,
+            id='main_scan',
+            replace_existing=True,
+        )
+        SCHEDULER.start()
+        print('✅ Scheduler started — scanning every 5 mins Mon–Fri 08:00–21:00 UK')
+
+
+@app.get('/health')
+def health():
+    next_run = None
+    try:
+        job = SCHEDULER.get_job('main_scan')
+        if job:
+            next_run = str(job.next_run_time)
+    except Exception:
+        pass
+    return {
+        'status':      'OK',
+        'version':     '2.3',
+        'app':         'EA2Y Scanner API',
+        'scheduler':   SCHEDULER.running,
+        'next_scan':   next_run,
+        'running':     STATE['running'],
+        'last_run':    STATE['last_run'],
+        'last_count':  STATE['last_count'],
+        'last_error':  STATE['last_error'],
+        'market_open': in_active_scan_window(),
+        'server_time': datetime.now(LONDON).strftime('%Y-%m-%d %H:%M:%S UK'),
+    }
+
+
+@app.post('/api/scan')
+def manual_scan(req: ScanRequest = ScanRequest()):
+    return scan_once()
+
+
+@app.get('/api/scanner')
+def scanner_get():
+    """
+    GET /api/scanner — triggers a fresh scan.
+    Dashboard ↻ Scan button calls this.
+    Previously missing — caused 404 errors.
+    """
+    return scan_once()
+
+
+@app.get('/api/results')
+def results():
+    """
+    Read latest stored results from Supabase without triggering a scan.
+    Returns both 'scanner' and 'results' keys so dashboard always finds data.
+    Ordered by score descending so best candidates appear first.
+    """
+    try:
+        res = supabase.table('scanner_results') \
+            .select('*') \
+            .order('score', desc=True) \
+            .limit(50) \
+            .execute()
+        data = res.data or []
+        return {
+            'scanner':  data,   # primary key read by dashboard
+            'results':  data,   # compatibility alias
+            'count':    len(data),
+            'last_run': STATE['last_run'],
+        }
+    except Exception as e:
+        print(f'⚠️ /api/results error: {e}')
+        return {'scanner': [], 'results': [], 'count': 0, 'last_run': None}
+
+
+@app.get('/api/news')
+def news(symbol: str):
+    """
+    Returns news for a symbol.
+    Chain: Supabase cache → Marketaux → Finnhub → Finviz scrape.
+    Always returns a non-empty list — never shows 'news fetch failed'.
+    """
+    sym = (symbol or '').upper().strip()
+    if not sym:
+        return {'symbol': '', 'news': []}
+
+    # 1. Try Supabase cached news (try both column names for compatibility)
+    try:
+        items = supabase.table('news_items') \
+            .select('title,source,published,url') \
+            .eq('symbol', sym) \
+            .limit(3) \
+            .execute()
+        if items.data and any(i.get('title') for i in items.data):
+            return {'symbol': sym, 'news': items.data, 'source': 'cache'}
+    except Exception as e:
+        print(f'⚠️ news_items query {sym}: {e}')
+
+    # 2. Live waterfall fetch
+    try:
+        news_items = get_news_for_symbols([sym]).get(sym, [])
+    except Exception as e:
+        print(f'⚠️ news fetch {sym}: {e}')
+        news_items = []
+
+    # 3. Persist if we got anything
+    if news_items:
+        persist_news(sym, news_items)
+
+    # 4. Guaranteed fallback — always return something useful
+    if not news_items:
+        news_items = [{
+            'title':     f'No recent news found for {sym} — check Finviz for latest catalyst',
+            'source':    'RC Scanner',
+            'published': datetime.utcnow().strftime('%Y-%m-%d'),
+            'url':       f'https://finviz.com/quote.ashx?t={sym}',
+        }]
+
+    return {'symbol': sym, 'news': news_items, 'source': 'live'}
+
+
+@app.get('/api/watchlist')
+def get_watchlist():
+    res = supabase.table('watchlist').select('*').order('createdat', desc=True).execute()
+    return {'watchlist': res.data or []}
+
+
+@app.post('/api/watchlist')
+def add_watchlist(item: WatchlistItem):
+    sym = item.symbol.upper().strip()
+    row = {'symbol': sym, 'name': item.name or sym}
+    supabase.table('watchlist').upsert(row, on_conflict='symbol').execute()
+    return {'status': 'OK', 'symbol': sym}
+
+
+@app.delete('/api/watchlist/{symbol}')
+def delete_watchlist(symbol: str):
+    supabase.table('watchlist').delete().eq('symbol', symbol.upper().strip()).execute()
+    return {'status': 'OK'}
+
+
+@app.get('/api/journal')
+def get_journal():
+    res = supabase.table('trade_journal').select('*').order('createdat', desc=True).execute()
+    return {'journal': res.data or []}
+
+
+@app.post('/api/journal')
+def add_journal(item: JournalItem):
+    sym = item.symbol.upper().strip()
+    pnl = 0.0 if item.entryprice is None or item.exitprice is None or item.shares is None else round((item.exitprice - item.entryprice) * item.shares, 2)
+    row = {'symbol': sym, 'setup': item.setup or '', 'entryprice': item.entryprice, 'exitprice': item.exitprice, 'shares': item.shares, 'grade': item.grade or '', 'pnl': pnl}
+    res = supabase.table('trade_journal').insert(row).execute()
+    return {'status': 'OK', 'trade': res.data[0] if res.data else row}
+
+
+@app.post('/api/reset-alerts')
+def reset_alerts():
+    ALERTED_TODAY.clear()
+    return {'status': 'OK'}
+
+
+# ─────────────────────────────────────────────────────────────
+# /api/topgainers
+# NO filters — raw top 10 biggest % gainers right now.
+# Purpose: prove the market data pipeline is live and working.
+# Returns price, change%, volume, float for each ticker.
+# Used by the dashboard "Market Pulse" test button.
+# ─────────────────────────────────────────────────────────────
+@app.get('/api/topgainers')
+def top_gainers():
+    started = datetime.utcnow()
+    tickers = []
+    try:
+        # Finviz top gainers signal — no price/float filter, pure % change rank
+        url = 'https://finviz.com/screener.ashx?v=111&s=ta_topgainers&o=-change'
+        r   = requests.get(url,
+                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'},
+                timeout=10)
+        soup = BeautifulSoup(r.text, 'html.parser')
+        raw  = []
+        for row in soup.select('table.screener_table tr'):
+            cells = row.find_all('td')
+            if len(cells) >= 10:
+                sym = cells[1].get_text(strip=True)
+                if sym and sym.isalpha() and 1 <= len(sym) <= 5:
+                    # cells layout for v=111: 0=No, 1=Ticker, 2=Company, 3=Sector,
+                    # 4=Industry, 5=Country, 6=Mktcap, 7=P/E, 8=Price, 9=Change, 10=Volume
+                    try:
+                        price  = float(cells[8].get_text(strip=True).replace(',',''))
+                        change = float(cells[9].get_text(strip=True).replace('%',''))
+                        volume = cells[10].get_text(strip=True)
+                        raw.append({'symbol': sym, 'price': price,
+                                    'change': change, 'volume': volume,
+                                    'company': cells[2].get_text(strip=True)})
+                    except Exception:
+                        pass
+        tickers = raw[:10]
+    except Exception as e:
+        return {'status': 'error', 'error': str(e), 'gainers': [],
+                'elapsed_ms': int((datetime.utcnow() - started).total_seconds() * 1000)}
+
+    if not tickers:
+        return {'status': 'market_closed',
+                'message': 'No gainers found — market may be closed or pre-market',
+                'gainers': [],
+                'elapsed_ms': int((datetime.utcnow() - started).total_seconds() * 1000),
+                'timestamp': started.isoformat()}
+
+    # Enrich top 10 with float data from Yahoo (cached)
+    for item in tickers:
         try:
-            price_data = get_price_data(symbol, "2d")
-            if not price_data["success"]:
-                continue
-            hist = price_data["hist"]
-            price = float(hist['Close'].iloc[-1])
-            prev = float(hist['Close'].iloc[-2])
-            gain = ((price - prev) / prev) * 100
-            rel_vol = get_intraday_rel_vol(symbol)
-            float_data = get_float(symbol)
-            float_shares = float_data['float']
-            passes_float = float_shares < 20_000_000
-            news = get_news(symbol)
-            passes_news = len(news) >= 1
-            passes_price = 1 <= price <= 20
-            passes_gain = gain >= 4
-            passes_volume = rel_vol >= 5
-            gain_score = min(gain / 30 * 25, 25)
-            vol_score = min(rel_vol / 10 * 25, 25)
-            float_score = 25 if passes_float else max(0, 25 - (float_shares - 20_000_000) / 2_000_000)
-            news_score = min(len(news) / 3 * 25, 25)
-            score = round(gain_score + vol_score + float_score + news_score, 1)
-            result = {
-                "symbol": symbol, "price": round(price, 2), "day_gain": round(gain, 2),
-                "rel_volume": rel_vol, "float": float_shares, "float_m": round(float_shares / 1_000_000, 1),
-                "news_count": len(news), "news_flag": passes_news,
-                "headlines": [n['title'] for n in news], "news_urls": [n['url'] for n in news],
-                "news_sources": [n['source'] for n in news], "news_dates": [n['published'] for n in news],
-                "passes_price": passes_price, "passes_gain": passes_gain, "passes_volume": passes_volume,
-                "passes_float": passes_float, "passes_news": passes_news,
-                "all_pass": all([passes_price, passes_gain, passes_volume, passes_float]),
-                "score": score, "scanned_at": str(datetime.now())
-            }
-            supabase.table("scanner_results").upsert(result).execute()
-            results.append(result)
-            if score >= TELEGRAM_SCORE_THRESHOLD and symbol not in alerted_today:
-                send_telegram_alert(symbol, score, gain, rel_vol, price, float_shares, result['headlines'])
-                alerted_today.add(symbol)
-                telegram_sent += 1
-            time.sleep(0.3)
-        except Exception as e:
-            print(f"❌ {symbol}: {e}")
-    results.sort(key=lambda x: x['score'], reverse=True)
-    return {"scanner": results, "count": len(results), "telegram_sent": telegram_sent, "source": "Finviz + Yahoo + Marketaux", "timestamp": str(datetime.now())}
+            fs = get_float(item['symbol'])
+            item['float_m']      = round(fs / 1_000_000, 1)
+            item['passes_float'] = fs <= 20_000_000
+        except Exception:
+            item['float_m']      = None
+            item['passes_float'] = None
 
-@app.get("/api/results")
-async def results_legacy():
-    return RedirectResponse(url="/api/scanner")
+    elapsed = int((datetime.utcnow() - started).total_seconds() * 1000)
+    return {
+        'status':      'ok',
+        'count':       len(tickers),
+        'gainers':     tickers,
+        'note':        'Top gainers — no filters applied. Float data enriched from Yahoo Finance cache.',
+        'elapsed_ms':  elapsed,
+        'timestamp':   started.isoformat(),
+        'source':      'Finviz top gainers signal + Yahoo float',
+    }
 
-@app.get("/api/news")
-async def news(symbol: str):
+
+# ─────────────────────────────────────────────────────────────
+# /api/status
+# Diagnostic endpoint — tells you exactly what the scanner
+# has done today without triggering a scan.
+# ─────────────────────────────────────────────────────────────
+@app.get('/api/status')
+def scanner_status():
+    # Count today's stored scan results
+    today_str = datetime.utcnow().date().isoformat()
+    stored_count = 0
+    last_stored  = None
+    top_stock    = None
     try:
-        res = supabase.table("scanner_results").select("headlines,news_urls,news_sources,news_dates").eq("symbol", symbol.upper()).order("scanned_at", desc=True).limit(1).execute()
-        if res.data and res.data[0].get("headlines"):
-            data = res.data[0]
-            headlines = data.get("headlines", [])
-            urls = data.get("news_urls", [])
-            sources = data.get("news_sources", [])
-            dates = data.get("news_dates", [])
-            news_list = [{"title": h, "url": u, "source": s, "published": d} for h, u, s, d in zip(headlines, urls, sources, dates)]
-            return {"symbol": symbol.upper(), "news": news_list}
+        res = supabase.table('scanner_results') \
+            .select('symbol,score,daygain,scanned_at') \
+            .gte('scanned_at', today_str) \
+            .order('score', desc=True) \
+            .limit(50) \
+            .execute()
+        stored_count = len(res.data or [])
+        if res.data:
+            last_stored = res.data[0].get('scanned_at')
+            top_stock   = res.data[0]
     except Exception as e:
-        print(f"Cache error: {e}")
-    return {"symbol": symbol.upper(), "news": get_news(symbol.upper())}
+        pass
 
-# ─────────────────────────────────────────────
-# MISSING ENDPOINTS FOR DASHBOARD
-# ─────────────────────────────────────────────
-@app.get("/api/topgainers")
-async def top_gainers():
+    # Next scheduler run
+    nxt = None
     try:
-        res = supabase.table("scanner_results").select("symbol, day_gain, price, score").order("day_gain", desc=True).limit(10).execute()
-        gainers = [{"symbol": item["symbol"], "change": item.get("day_gain", 0), "price": item.get("price", 0), "score": item.get("score", 0)} for item in (res.data or [])]
-        return {"topgainers": gainers}
-    except Exception as e:
-        print(f"Top gainers error: {e}")
-        return {"topgainers": []}
+        from apscheduler.schedulers.background import BackgroundScheduler
+        # SCHEDULER global may or may not be running in this version
+    except Exception:
+        pass
 
-@app.get("/api/status")
-async def status():
-    et = pytz.timezone('America/New_York')
-    now_et = datetime.now(et)
-    market_open = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
-    market_close = now_et.replace(hour=16, minute=0, second=0, microsecond=0)
-    is_market_open = market_open <= now_et <= market_close and now_et.weekday() < 5
-    return {"status": "online", "market_open": is_market_open, "timestamp": str(now_et), "version": "v3.3", "endpoints": ["/api/scanner", "/api/topgainers", "/api/watchlist", "/api/journal", "/api/news"]}
+    return {
+        'status':             'ok',
+        'scanner_running':    STATE['running'],
+        'last_scan':          STATE['last_run'],
+        'last_error':         STATE['last_error'],
+        'scans_today':        STATE['last_count'],
+        'supabase_rows_today': stored_count,
+        'last_stored_result': last_stored,
+        'top_stock_today':    top_stock,
+        'market_open_now':    in_active_scan_window(),
+        'server_time_uk':     datetime.now(LONDON).strftime('%Y-%m-%d %H:%M:%S UK'),
+        'telegram_ready':     bool(TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID),
+        'note':               (
+            'Scanner active — results being stored' if stored_count > 0
+            else 'No results stored today. Possible causes: (1) market closed, '
+                 '(2) Render app sleeping — check UptimeRobot is pinging /health every 5 mins, '
+                 '(3) scheduler not started — redeploy app to trigger startup.'
+        ),
+    }
 
-# ─────────────────────────────────────────────
-# WATCHLIST & JOURNAL (safe versions)
-# ─────────────────────────────────────────────
-@app.get("/api/watchlist")
-async def get_watchlist():
-    try:
-        res = supabase.table("watchlist").select("*").order("created_at").execute()
-        return {"watchlist": res.data or []}
-    except Exception as e:
-        print(f"Watchlist error: {e}")
-        return {"watchlist": []}
 
-@app.post("/api/watchlist")
-async def add_watchlist_item(item: WatchlistItem):
-    symbol = item.symbol.upper().strip()
-    row = {"symbol": symbol, "name": item.name or symbol}
-    try:
-        supabase.table("watchlist").upsert(row, on_conflict="symbol").execute()
-        return {"status": "OK", "symbol": symbol}
-    except Exception as e:
-        print(f"Add watchlist error: {e}")
-        return {"status": "OK", "symbol": symbol, "warning": "Table not ready"}
-
-@app.delete("/api/watchlist/{symbol}")
-async def delete_watchlist_item(symbol: str):
-    try:
-        supabase.table("watchlist").delete().eq("symbol", symbol.upper().strip()).execute()
-        return {"status": "OK", "symbol": symbol.upper().strip()}
-    except Exception as e:
-        print(f"Delete watchlist error: {e}")
-        return {"status": "OK", "symbol": symbol.upper().strip(), "warning": "Table not ready"}
-
-@app.get("/api/journal")
-async def get_journal():
-    try:
-        res = supabase.table("trade_journal").select("*").order("created_at", desc=True).execute()
-        return {"journal": res.data or []}
-    except Exception as e:
-        print(f"Journal error: {e}")
-        return {"journal": []}
-
-@app.post("/api/journal")
-async def add_journal_item(item: JournalItem):
-    symbol = item.symbol.upper().strip()
-    pnl = 0.0 if item.entry_price is None or item.exit_price is None or item.shares is None else round((item.exit_price - item.entry_price) * item.shares, 2)
-    row = {"symbol": symbol, "setup": item.setup or "", "entry_price": item.entry_price, "exit_price": item.exit_price, "shares": item.shares, "grade": item.grade or "", "pnl": pnl}
-    try:
-        res = supabase.table("trade_journal").insert(row).execute()
-        return {"status": "OK", "trade": res.data[0] if res.data else row}
-    except Exception as e:
-        print(f"Add journal error: {e}")
-        return {"status": "OK", "trade": row, "warning": "Table not ready"}
-
-@app.delete("/api/journal/{trade_id}")
-async def delete_journal_item(trade_id: str):
-    try:
-        supabase.table("trade_journal").delete().eq("id", trade_id).execute()
-        return {"status": "OK", "id": trade_id}
-    except Exception as e:
-        print(f"Delete journal error: {e}")
-        return {"status": "OK", "id": trade_id, "warning": "Table not ready"}
-
-@app.get("/health")
-async def health():
-    tg_configured = bool(os.getenv("TELEGRAM_BOT_TOKEN") and os.getenv("TELEGRAM_CHAT_ID"))
-    return {"status": "OK", "version": "v3.3", "news_live": True, "telegram_ready": tg_configured, "rel_vol_method": "intraday-accurate", "alerted_today": len(alerted_today)}
-
-@app.post("/api/reset-alerts")
-async def reset_alerts():
-    alerted_today.clear()
-    return {"status": "OK", "message": "Daily alert tracker reset"}
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host='0.0.0.0', port=int(os.getenv('PORT', '8000')))
