@@ -1,10 +1,11 @@
-# RC Scanner API v2.4 - Fixed Rate Limits + Ticker Validation
+# RC Scanner API v3.0 - Fixed Finviz + Exchange Filters + Rate Limits
 import os
 import time
 import requests
 from bs4 import BeautifulSoup
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from supabase import create_client
 from dotenv import load_dotenv
 import yfinance as yf
@@ -15,7 +16,7 @@ from pydantic import BaseModel
 
 load_dotenv()
 
-app = FastAPI(title="RC Scanner API v2.2 - Fixed")
+app = FastAPI(title="RC Scanner API v3.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -40,7 +41,7 @@ class JournalItem(BaseModel):
     grade: str | None = None
 
 # ─────────────────────────────────────────────
-# TELEGRAM ALERT (unchanged)
+# TELEGRAM ALERT
 # ─────────────────────────────────────────────
 def send_telegram_alert(symbol: str, score: float, gain: float, rel_vol: float,
                          price: float, float_shares: int, headlines: List[str]):
@@ -79,7 +80,7 @@ FLOAT_CACHE = {}
 def get_float(symbol: str) -> Dict:
     if symbol in FLOAT_CACHE and (datetime.now() - FLOAT_CACHE[symbol]['time']) < timedelta(hours=24):
         return FLOAT_CACHE[symbol]
-    time.sleep(0.3)  # FIX: avoid 429 rate limit
+    time.sleep(0.3)
     try:
         stock = yf.Ticker(symbol)
         info = stock.info
@@ -90,7 +91,7 @@ def get_float(symbol: str) -> Dict:
         return {'float': 25_000_000}
 
 # ─────────────────────────────────────────────
-# FIXED RELATIVE VOLUME (intraday-accurate) + retry
+# RELATIVE VOLUME (intraday-accurate)
 # ─────────────────────────────────────────────
 def get_intraday_rel_vol(symbol: str) -> float:
     try:
@@ -116,7 +117,7 @@ def get_intraday_rel_vol(symbol: str) -> float:
         return 1.0
 
 # ─────────────────────────────────────────────
-# NEWS (unchanged)
+# NEWS (Marketaux free tier)
 # ─────────────────────────────────────────────
 def get_news(symbol: str, api_key: str = None) -> List[Dict]:
     if not api_key:
@@ -141,12 +142,12 @@ def get_news(symbol: str, api_key: str = None) -> List[Dict]:
         return []
 
 # ─────────────────────────────────────────────
-# FINVIZ GAPPER SCRAPER (improved robustness)
+# FINVIZ GAPPER SCRAPER (NASDAQ + NYSE only)
 # ─────────────────────────────────────────────
 def get_finviz_gappers() -> List[str]:
     try:
-        # Screener: price $2-$20, gain >10%, volume >500k, listed on NASDAQ/NYSE
-        url = "https://finviz.com/screener.ashx?v=111&f=sh_price_u20,sh_price_o2,ta_perf_d10o,sh_vol_o500"
+        # Screener: NASDAQ, NYSE, price $2-$20, day gain >10%, volume >500k
+        url = "https://finviz.com/screener.ashx?v=111&f=exch_nasd,exch_nyse,sh_price_u20,sh_price_o2,ta_perf_d10o,sh_vol_o500"
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
         response = requests.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(response.text, 'html.parser')
@@ -155,28 +156,34 @@ def get_finviz_gappers() -> List[str]:
             cells = row.find_all('td')
             if len(cells) > 1:
                 symbol = cells[1].text.strip()
-                # Basic filter: letters only, length 3-5, avoid known OTC patterns
-                if symbol.isalpha() and 3 <= len(symbol) <= 5:
+                # Filter: only alphanumeric, 2-5 chars, no dots (OTC)
+                if symbol.replace('.', '').isalnum() and 2 <= len(symbol) <= 5 and '.' not in symbol:
                     tickers.append(symbol)
-        return list(dict.fromkeys(tickers))[:20]  # unique, max 20
+        # Deduplicate and limit
+        return list(dict.fromkeys(tickers))[:20]
     except Exception as e:
-        print(f"Finviz scrape error: {e}")
-        return ["SMCI", "MU", "AMD"]  # fallback
+        print(f"Finviz error: {e}")
+        # Fallback to liquid large caps that always have data
+        return ["SMCI", "MU", "AMD", "NVDA", "TSLA"]
 
 # ─────────────────────────────────────────────
-# QUICK TICKER VALIDATION (avoid delisted)
+# QUICK TICKER VALIDATION
 # ─────────────────────────────────────────────
 def is_valid_ticker(symbol: str) -> bool:
-    """Fast check: can we get 2 days of price data?"""
+    """Check if ticker has price history and is above $0.5"""
     try:
-        time.sleep(0.2)  # gentle rate limit
-        hist = yf.Ticker(symbol).history(period="2d")
-        return len(hist) >= 2 and hist['Close'].iloc[-1] > 0
+        time.sleep(0.2)
+        ticker = yf.Ticker(symbol)
+        hist = ticker.history(period="2d")
+        if len(hist) < 2:
+            return False
+        latest_close = hist['Close'].iloc[-1]
+        return latest_close > 0.5
     except:
         return False
 
 # ─────────────────────────────────────────────
-# MAIN SCANNER ENDPOINT (fixed)
+# MAIN SCANNER ENDPOINT
 # ─────────────────────────────────────────────
 TELEGRAM_SCORE_THRESHOLD = 70
 alerted_today = set()
@@ -185,7 +192,7 @@ alerted_today = set()
 async def scanner():
     raw_tickers = get_finviz_gappers()
     
-    # Step 1: filter only tickers with valid price history
+    # Validate each ticker
     valid_tickers = []
     for sym in raw_tickers:
         if is_valid_ticker(sym):
@@ -210,9 +217,9 @@ async def scanner():
             float_shares = float_data['float']
             passes_float = float_shares < 20_000_000
             news = get_news(symbol)
-            passes_news = len(news) >= 1  # FIX: Ross Cameron requires ≥1 article
-            passes_price = 1 <= price <= 20   # FIX: $1–$20 range
-            passes_gain = gain >= 4           # FIX: min 4%, but scoring will reward ≥10%
+            passes_news = len(news) >= 1
+            passes_price = 1 <= price <= 20
+            passes_gain = gain >= 4
             passes_volume = rel_vol >= 5
             
             # Scoring (0-100)
@@ -253,7 +260,7 @@ async def scanner():
                 alerted_today.add(symbol)
                 telegram_sent += 1
                 
-            time.sleep(0.3)  # FIX: delay between tickers to avoid 429
+            time.sleep(0.3)
             
         except Exception as e:
             print(f"❌ {symbol}: {e}")
@@ -261,17 +268,19 @@ async def scanner():
     results.sort(key=lambda x: x['score'], reverse=True)
     return {"scanner": results, "count": len(results), "telegram_sent": telegram_sent, "source": "Finviz + Yahoo + Marketaux", "timestamp": str(datetime.now())}
 
+# ─────────────────────────────────────────────
+# LEGACY REDIRECT
+# ─────────────────────────────────────────────
 @app.get("/api/results")
 async def results_legacy():
-    from fastapi.responses import RedirectResponse
     return RedirectResponse(url="/api/scanner")
 
 # ─────────────────────────────────────────────
-# FIXED NEWS ENDPOINT (Supabase column name)
+# NEWS ENDPOINT (cached from scanner_results)
 # ─────────────────────────────────────────────
 @app.get("/api/news")
 async def news(symbol: str):
-    # First try to get cached news from scanner_results table
+    # Try to get cached news from scanner_results first
     try:
         res = supabase.table("scanner_results").select("headlines,news_urls,news_sources,news_dates").eq("symbol", symbol.upper()).order("scanned_at", desc=True).limit(1).execute()
         if res.data and res.data[0].get("headlines"):
@@ -283,13 +292,12 @@ async def news(symbol: str):
             news_list = [{"title": h, "url": u, "source": s, "published": d} for h, u, s, d in zip(headlines, urls, sources, dates)]
             return {"symbol": symbol.upper(), "news": news_list}
     except Exception as e:
-        print(f"Cache news error: {e}")
-    
-    # Otherwise fetch live from Marketaux
+        print(f"Cache error: {e}")
+    # Otherwise fetch live
     return {"symbol": symbol.upper(), "news": get_news(symbol.upper())}
 
 # ─────────────────────────────────────────────
-# WATCHLIST & JOURNAL (unchanged)
+# WATCHLIST & JOURNAL ENDPOINTS (unchanged)
 # ─────────────────────────────────────────────
 @app.get("/api/watchlist")
 async def get_watchlist():
@@ -355,7 +363,7 @@ async def delete_journal_item(trade_id: str):
 @app.get("/health")
 async def health():
     tg_configured = bool(os.getenv("TELEGRAM_BOT_TOKEN") and os.getenv("TELEGRAM_CHAT_ID"))
-    return {"status": "OK", "version": "v2.2", "news_live": True, "telegram_ready": tg_configured, "rel_vol_method": "intraday-accurate", "alerted_today": len(alerted_today)}
+    return {"status": "OK", "version": "v3.0", "news_live": True, "telegram_ready": tg_configured, "rel_vol_method": "intraday-accurate", "alerted_today": len(alerted_today)}
 
 @app.post("/api/reset-alerts")
 async def reset_alerts():
